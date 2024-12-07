@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fio-config
+data:
+  fio-random.job: |
+    [global]
+    ioengine=libaio
+    direct=1
+    bs=4k
+    size=5G
+    time_based
+    runtime=60
+    numjobs=4
+    group_reporting
+    filename=/datadir/datafile
+    iodepth=4
+
+    [random_rw]
+    rw=randrw
+    rwmixread=70
+  fio-sequential.job: |
+    [global]
+    ioengine=libaio        # Asynchronous I/O engine
+    direct=1               # Bypass page cache for direct I/O
+    runtime=60             # Run test for 60 seconds
+    time_based=1           # Use time-based run instead of size
+    bs=8k                  # Block size typical for PostgreSQL WAL
+    size=5G                # Total data to write (useful if time_based=0)
+    filename=/datadir/walfile  # File to simulate WAL storage
+    iodepth=1              # Single I/O request at a time (sequential behavior)
+    numjobs={{ .Values.sequential.numjobs }}
+    
+    [wal_write]
+    rw=write               # Sequential write pattern

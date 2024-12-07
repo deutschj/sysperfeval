@@ -1,0 +1,5 @@
+random:
+  enabled: false
+sequential:
+  enabled: true 
+  numjobs: 32

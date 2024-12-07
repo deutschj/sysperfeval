@@ -1,0 +1,98 @@
+{{- if .Values.random.enabled }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fio-random
+spec:
+  template:
+    spec:
+      volumes:
+      - name: fio-config-volume
+        configMap:
+          name: fio-config
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: fio-random-pvc
+      containers:
+      - name: fio
+        image: artifacts.endress.com/docker-mirror/xridge/fio
+        args:
+        - --output-format=json
+        - --output=/datadir/fio-random.json
+        - /opt/fio/fio-random.job
+        command: ["fio", "/opt/fio/fio-random.job"]
+        volumeMounts:
+        - name: fio-config-volume
+          mountPath: /opt/fio
+        - name: data-volume
+          mountPath: /datadir
+      - name: busybox
+        image: artifacts.endress.com/docker-mirror/busybox
+        command: ["sleep", "infinity"]
+        volumeMounts:
+        - name: data-volume
+          mountPath: /datadir
+      restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fio-random-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi
+{{- end }}
+{{- if .Values.sequential.enabled }}        
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fio-sequential-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: fio-sequential
+spec:
+  template:
+    spec:
+      volumes:
+      - name: fio-config-volume
+        configMap:
+          name: fio-config
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: fio-sequential-pvc
+      containers:
+      - name: fio
+        image: artifacts.endress.com/docker-mirror/xridge/fio
+        args:
+        - --output-format=json
+        - --output=/datadir/fio-sequential.json
+        - /opt/fio/fio-sequential.job
+        command: ["fio", "/opt/fio/fio-sequential.job"]
+        volumeMounts:
+        - name: fio-config-volume
+          mountPath: /opt/fio
+        - name: data-volume
+          mountPath: /datadir
+      - name: busybox
+        image: artifacts.endress.com/docker-mirror/busybox
+        command: ["sleep", "infinity"]
+        volumeMounts:
+        - name: data-volume
+          mountPath: /datadir
+      restartPolicy: OnFailure
+{{- end }}
