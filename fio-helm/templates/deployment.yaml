@@ -3,17 +3,17 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: fio-random
+  name: {{ .Values.random.jobname }} 
 spec:
   template:
     spec:
       volumes:
-      - name: fio-config-volume
+      - name: "fio-config-{{ .Values.random.jobname }}"
         configMap:
-          name: fio-config
+          name: {{ .Values.random.jobname }} 
       - name: data-volume
         persistentVolumeClaim:
-          claimName: fio-random-pvc
+          claimName: "fio-pvc-{{ .Values.random.jobname }}"
       containers:
       - name: fio
         image: artifacts.endress.com/docker-mirror/xridge/fio
@@ -23,7 +23,7 @@ spec:
         - /opt/fio/fio-random.job
         command: ["fio", "/opt/fio/fio-random.job"]
         volumeMounts:
-        - name: fio-config-volume
+        - name: "fio-config-{{ .Values.random.jobname }}"
           mountPath: /opt/fio
         - name: data-volume
           mountPath: /datadir
@@ -47,11 +47,11 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: fio-random-pvc
+  name: "fio-pvc-{{ .Values.random.jobname }}"
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: longhorn
+  storageClassName: longhorn-2
   resources:
     requests:
       storage: 10Gi
@@ -65,7 +65,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: longhorn
+  storageClassName: longhorn-2
   resources:
     requests:
       storage: 10Gi

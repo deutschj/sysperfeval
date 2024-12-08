@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: fio-config
+  name: {{ .Values.random.jobname }}
 data:
   fio-random.job: |
     [global]
     ioengine=libaio
     direct=1
-    bs=4k
+    bs=8k
     size=5G
     time_based
     runtime=60
@@ -17,8 +17,7 @@ data:
     iodepth=64
 
     [random_rw]
-    rw=randrw
-    rwmixread=70
+    rw=randread
   fio-sequential.job: |
     [global]
     ioengine=libaio        # Asynchronous I/O engine

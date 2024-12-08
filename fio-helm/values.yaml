@@ -1,6 +1,7 @@
 random:
   enabled: true 
   numjobs: 1
+  jobname: fio-random-1
 sequential:
   enabled: false 
   numjobs: 32
