@@ -11,10 +11,10 @@ data:
     size=5G
     time_based
     runtime=60
-    numjobs=4
+    numjobs={{ .Values.random.numjobs }}
     group_reporting
     filename=/datadir/datafile
-    iodepth=4
+    iodepth=64
 
     [random_rw]
     rw=randrw
