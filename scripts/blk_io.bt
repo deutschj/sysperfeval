@@ -1,0 +1,52 @@
+#!/usr/bin/env bpftrace
+
+BEGIN
+{
+    printf("Monitoring for new `pgbench` process creations...\n");
+}
+
+// Trace process creation (execve)
+tracepoint:syscalls:sys_enter_execve
+/comm == "pgbench"/
+{
+    @target_pid = pid; // Store the `pgbench` PID
+    printf("pgbench started with PID: %d\n", pid);
+}
+
+// Trace block requests when they are inserted into the queue
+tracepoint:block:block_rq_insert
+/@target_pid && pid == @target_pid/
+{
+    printf("INSERT: PID=%d, dev=%d:%d, sector=%llu, bytes=%u, rw=%s\n",
+           pid,
+           args->dev >> 20, args->dev & 0xfffff, // Major and minor device numbers
+           args->sector,
+           args->nr_sector * 512, // Sector size in bytes
+           args->rwbs);
+}
+
+// Trace block requests when they are issued to the device
+tracepoint:block:block_rq_issue
+/@target_pid && pid == @target_pid/
+{
+    printf("ISSUE: PID=%d, dev=%d:%d, sector=%llu, bytes=%u, rw=%s\n",
+           pid,
+           args->dev >> 20, args->dev & 0xfffff,
+           args->sector,
+           args->nr_sector * 512,
+           args->rwbs);
+}
+
+// Trace block requests when they are completed
+tracepoint:block:block_rq_complete
+/@target_pid && pid == @target_pid/
+{
+    printf("COMPLETE: PID=%d, dev=%d:%d, sector=%llu, bytes=%u, result=%d\n",
+           pid,
+           args->dev >> 20, args->dev & 0xfffff,
+           args->sector,
+           args->nr_sector * 512,
+           args->error);
+}
+
+

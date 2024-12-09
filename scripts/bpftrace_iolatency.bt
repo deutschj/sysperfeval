@@ -1,0 +1,11 @@
+#!/usr/bin/env bpftrace
+
+tracepoint:block:block_rq_issue /pid == $1/ { 
+  @start[pid] = nsecs; 
+} 
+
+tracepoint:block:block_rq_complete /pid == $1 && @start[pid]/ 
+{ 
+  @us[pid] = hist((nsecs - @start[pid]) / 1000000); 
+  delete(@start[pid]); 
+}
