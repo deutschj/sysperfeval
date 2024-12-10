@@ -169,6 +169,41 @@ COMPLETE: PID=3449590, dev=8:32, sector=2447400, bytes=4096, result=0
 COMPLETE: PID=3449590, dev=8:64, sector=6938832, bytes=8192, result=0
 ```
 
+##### IOPS with iotop (filtering on pid)
+
+```text
+Total DISK READ :       0.00 B/s | Total DISK WRITE :       0.00 B/s
+Actual DISK READ:       2.72 M/s | Actual DISK WRITE:      10.29 M/s
+TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND
+549976 be/4 26          0.00 B/s    0.00 B/s  ?unavailable?  pgbench --client 1 --jobs 1 --time 30
+```
+
+```text
+Total DISK READ :       3.25 M/s | Total DISK WRITE :       6.72 M/s
+Actual DISK READ:       3.26 M/s | Actual DISK WRITE:       9.79 M/s
+
+TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND
+567937 be/4 26          3.25 M/s    6.72 M/s  ?unavailable?  postgres: postgres-test: app app 10.42.1.138(49130) UPDATE
+```
+
+-> postgres process does the IO, not pgbench
+
+The same using biotop, 5-second summaries, filter by pid:
+
+```text
+./biotop -p 563578 5
+12:33:52 loadavg: 1.96 1.47 0.86 3/1826 564393
+
+PID     COMM             D MAJ MIN DISK       I/O  Kbytes  AVGms
+563578  postgres         R 8   64  sde       3590 50280.0   1.11
+
+12:33:54 loadavg: 1.96 1.47 0.86 1/1826 564401
+
+PID     COMM             D MAJ MIN DISK       I/O  Kbytes  AVGms
+563578  postgres         R 8   64  sde       1220 17612.0   1.12
+Detaching...
+```text
+
 ##### biolatency pgbench results
 
 time=30, clients=1, jobs=1
