@@ -13,7 +13,7 @@ spec:
           name: {{ .Values.random.jobname }} 
       - name: data-volume
         persistentVolumeClaim:
-          claimName: "fio-pvc-{{ .Values.random.jobname }}"
+          claimName: "fio-pvc"
       containers:
       - name: fio
         image: artifacts.endress.com/docker-mirror/xridge/fio
@@ -43,47 +43,35 @@ spec:
                 operator: In
                 values:
                   - ideweiiss8508
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: "fio-pvc-{{ .Values.random.jobname }}"
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: longhorn-2
-  resources:
-    requests:
-      storage: 10Gi
 {{- end }}
-{{- if .Values.sequential.enabled }}        
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: fio-sequential-pvc
+  name: "fio-pvc"
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: longhorn-2
+  storageClassName: {{ .Values.storageClass }}
   resources:
     requests:
       storage: 10Gi
+{{- if .Values.sequential.enabled }}        
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: fio-sequential
+  name: {{ .Values.sequential.jobname }}
 spec:
   template:
     spec:
       volumes:
-      - name: fio-config-volume
+      - name: "fio-config-{{ .Values.sequential.jobname }}"
         configMap:
-          name: fio-config
+          name: "{{ .Values.sequential.jobname }}"
       - name: data-volume
         persistentVolumeClaim:
-          claimName: fio-sequential-pvc
+          claimName: fio-pvc
       containers:
       - name: fio
         image: artifacts.endress.com/docker-mirror/xridge/fio
@@ -93,7 +81,7 @@ spec:
         - /opt/fio/fio-sequential.job
         command: ["fio", "/opt/fio/fio-sequential.job"]
         volumeMounts:
-        - name: fio-config-volume
+        - name: "fio-config-{{ .Values.sequential.jobname }}"
           mountPath: /opt/fio
         - name: data-volume
           mountPath: /datadir
@@ -112,5 +100,5 @@ spec:
               - key: kubernetes.io/hostname
                 operator: In
                 values:
-                - ideweiiss8508 
+                - ideweiiss8508
 {{- end }}

@@ -17,7 +17,7 @@ data:
     iodepth=64
 
     [random_rw]
-    rw=randread
+    rw=randrw
   fio-sequential.job: |
     [global]
     ioengine=libaio        # Asynchronous I/O engine
@@ -29,6 +29,7 @@ data:
     filename=/datadir/walfile  # File to simulate WAL storage
     iodepth=1              # Single I/O request at a time (sequential behavior)
     numjobs={{ .Values.sequential.numjobs }}
-    
+
     [wal_write]
-    rw=write               # Sequential write pattern
+    rw=rw               # Sequential write pattern
+

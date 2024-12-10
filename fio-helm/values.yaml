@@ -1,7 +1,9 @@
+storageClass: local-path
 random:
-  enabled: true 
-  numjobs: 1
-  jobname: fio-random-1
+  enabled: true
+  numjobs: 32
+  jobname: fio-random
 sequential:
-  enabled: false 
+  jobname: fio-seq
+  enabled: false
   numjobs: 32
