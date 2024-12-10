@@ -81,7 +81,7 @@ PID    COMM               FD ERR PATH
 
 ## Benchmarking with pgbench
 
-##### Script that gets pgbench PID, and traces blk_io_(issue|insert|complete) tracepoints (IOps):
+##### Script that gets pgbench PID, and traces block_rq_(issue|insert|complete) tracepoints (IOps):
 
 ```bash
 #!/usr/bin/env bpftrace
@@ -208,7 +208,9 @@ Tracing block device I/O... Hit Ctrl-C to end.
 avg = 1 msecs, total: 175444 msecs, count: 104602
 ```
 
-With bpftrace: filter by device and pgbench PID, get blk_rq_issue and blk_rq_complete events -> then calculate difference in time between them:
+With bpftrace: filter by device and pgbench PID, get block_rq_issue and block_rq_complete events -> then calculate difference in time between them:
+
+Script can be found [here](scripts/blk_debug.bt)
 
 ```bash
 # cat out1.log
