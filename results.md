@@ -202,7 +202,7 @@ PID     COMM             D MAJ MIN DISK       I/O  Kbytes  AVGms
 PID     COMM             D MAJ MIN DISK       I/O  Kbytes  AVGms
 563578  postgres         R 8   64  sde       1220 17612.0   1.12
 Detaching...
-```text
+```
 
 ##### biolatency pgbench results
 
