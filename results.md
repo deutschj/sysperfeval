@@ -169,4 +169,84 @@ COMPLETE: PID=3449590, dev=8:32, sector=2447400, bytes=4096, result=0
 COMPLETE: PID=3449590, dev=8:64, sector=6938832, bytes=8192, result=0
 ```
 
+##### biolatency pgbench results
 
+time=30, clients=1, jobs=1
+
+```bash
+# ./biolatency -m -d sde -e
+Tracing block device I/O... Hit Ctrl-C to end.
+^C
+     msecs               : count     distribution
+         0 -> 1          : 17603    |****************************************|
+         2 -> 3          : 2897     |******                                  |
+         4 -> 7          : 654      |*                                       |
+         8 -> 15         : 33       |                                        |
+        16 -> 31         : 1        |                                        |
+        32 -> 63         : 0        |                                        |
+        64 -> 127        : 1        |                                        |
+
+avg = 0 msecs, total: 15563 msecs, count: 21189
+```
+
+clients=10:
+
+```bash
+# ./biolatency -m -d sde -e
+Tracing block device I/O... Hit Ctrl-C to end.
+^C
+     msecs               : count     distribution
+         0 -> 1          : 57666    |****************************************|
+         2 -> 3          : 41545    |****************************            |
+         4 -> 7          : 4833     |***                                     |
+         8 -> 15         : 295      |                                        |
+        16 -> 31         : 31       |                                        |
+        32 -> 63         : 159      |                                        |
+        64 -> 127        : 46       |                                        |
+       128 -> 255        : 27       |                                        |
+
+avg = 1 msecs, total: 175444 msecs, count: 104602
+```
+
+With bpftrace: filter by device and pgbench PID, get blk_rq_issue and blk_rq_complete events -> then calculate difference in time between them:
+
+```bash
+# cat out1.log
+Attaching 4 probes...
+Monitoring pgbench for I/O latency...
+pgbench started with PID: 471595
+ISSUE: PID=471595, sector=46387496, dev=8388608
+COMPLETE: sector=46387496, latency=198461 ns
+ISSUE: PID=471595, sector=46387528, dev=8388608
+COMPLETE: sector=46387528, latency=458844 ns
+ISSUE: PID=471595, sector=29864976, dev=8388608
+COMPLETE: sector=29864976, latency=189674 ns
+ISSUE: PID=471595, sector=29865008, dev=8388608
+COMPLETE: sector=29865008, latency=171986 ns
+```
+
+Add up latencies: `198461 + 458844 + 189674 + 171986 ns = 1018965 ns = 1,02ms`
+
+However pgbench itself reports a latency avg of 2,87ms:
+
+```text
+pgbench (17.0 (Debian 17.0-1.pgdg110+1))
+[...]
+latency average = 2.873 ms
+initial connection time = 9.289 ms 
+tps = 348.055502 (without initial connection time)
+```
+
+Reference: biolatency without pgbench load
+
+```bash
+# ./biolatency -m -d sde -e
+Tracing block device I/O... Hit Ctrl-C to end.
+^C
+     msecs               : count     distribution
+         0 -> 1          : 297      |*****************                       |
+         2 -> 3          : 675      |****************************************|
+         4 -> 7          : 28       |*                                       |
+
+avg = 1 msecs, total: 1909 msecs, count: 1000
+```

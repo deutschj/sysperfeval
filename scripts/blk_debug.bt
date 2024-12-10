@@ -1,0 +1,68 @@
+#!/usr/bin/env bpftrace
+
+// BEGIN
+// {
+//     printf("Monitoring pgbench for I/O latency...\n");
+// }
+// 
+// tracepoint:syscalls:sys_enter_execve
+// /comm == "pgbench"/
+// {
+//     @pgbench_pid = pid;
+//     printf("pgbench started with PID: %d\n", pid);
+// }
+// 
+// 
+// tracepoint:block:block_rq_issue
+// /@pgbench_pid/
+// {
+//     @timestamps[args->sector] = nsecs;
+//     printf("ISSUE: PID=%d, sector=%llu, dev=%d\n", pid, args->sector, args->dev);
+// }
+// 
+// tracepoint:block:block_rq_complete
+// {
+//     if (@timestamps[args->sector])
+//     {
+//         $start_ns = @timestamps[args->sector];
+//         $latency_ns = nsecs - $start_ns;
+// 
+//         printf("COMPLETE: sector=%llu, latency=%llu ns\n", args->sector, $latency_ns);
+// 
+//         delete(@timestamps[args->sector]);
+//     }
+// }
+// 
+
+BEGIN
+{
+    printf("Monitoring pgbench for I/O latency...\n");
+    @target_dev = 8388608; // Replace with your actual device ID from valid events
+}
+
+tracepoint:syscalls:sys_enter_execve
+/comm == "pgbench"/
+{
+    @pgbench_pid = pid;
+    printf("pgbench started with PID: %d\n", pid);
+}
+
+tracepoint:block:block_rq_issue
+/@pgbench_pid && args->dev == @target_dev/
+{
+    @timestamps[args->sector] = nsecs;
+    printf("ISSUE: PID=%d, sector=%llu, dev=%d\n", pid, args->sector, args->dev);
+}
+
+tracepoint:block:block_rq_complete
+/args->dev == @target_dev/
+{
+    if (@timestamps[args->sector])
+    {
+        $start_ns = @timestamps[args->sector];
+        $latency_ns = nsecs - $start_ns;
+        printf("COMPLETE: sector=%llu, latency=%llu ns\n", args->sector, $latency_ns);
+        delete(@timestamps[args->sector]);
+    }
+}
+
