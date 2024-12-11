@@ -7,7 +7,7 @@ Using biolatency on the mounted disk (/dev/sde, the block device created and mou
 ```bash
 ideweiiss8508:/usr/share/bcc/tools # ./biolatency -d sde
 Tracing block device I/O... Hit Ctrl-C to end.
-^C
+
      usecs               : count     distribution
          0 -> 1          : 0        |                                        |
          2 -> 3          : 0        |                                        |
@@ -153,6 +153,8 @@ For the Longhorn provider, iostat output looks like this:
 (/dev/sdf, because Longhorn volumes are mounted as an extra block device on the hosts):
 
 ```text
+# iostat -sxz 1
+Linux 6.4.0-150600.23.22-default        12/11/24        _x86_64_        (4 CPU)
 avg-cpu:  %user   %nice %system %iowait  %steal   %idle
            9.02    0.00   11.03    0.00    0.00   79.95
 
@@ -250,7 +252,7 @@ fio interacts with /sys/block/<disk-name>/stat to get disk statistics.
 ## Benchmarking a PostgreSQL database workload with pgbench
 
 ##### Script that gets pgbench PID, and traces block_rq_(issue|insert|complete) tracepoints (IOps):
-TODO: really count IO instead of displaying events -> iostat, iotop
+TODO: delete this and just use biotop
 ```bash
 #!/usr/bin/env bpftrace
 
@@ -354,7 +356,7 @@ TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND
 567937 be/4 26          3.25 M/s    6.72 M/s  ?unavailable?  postgres: postgres-test: app app 10.42.1.138(49130) UPDATE
 ```
 
-One can see that the `postgres` process (the database itself) does the IO, not pgbench
+One can see that the `postgres` process (the database itself) does the IO, not pgbench.
 
 The same using biotop, 5-second summaries, filter by pid:
 
@@ -379,7 +381,7 @@ time=30, clients=1, jobs=1
 ```bash
 # ./biolatency -m -d sde -e
 Tracing block device I/O... Hit Ctrl-C to end.
-^C
+
      msecs               : count     distribution
          0 -> 1          : 17603    |****************************************|
          2 -> 3          : 2897     |******                                  |
@@ -397,7 +399,7 @@ clients=10:
 ```bash
 # ./biolatency -m -d sde -e
 Tracing block device I/O... Hit Ctrl-C to end.
-^C
+
      msecs               : count     distribution
          0 -> 1          : 57666    |****************************************|
          2 -> 3          : 41545    |****************************            |
@@ -411,10 +413,7 @@ Tracing block device I/O... Hit Ctrl-C to end.
 avg = 1 msecs, total: 175444 msecs, count: 104602
 ```
 
-TODO: only add pid filter to bpftrace, print out histogram
-TODO histogram and calculate average instead of adding values!
-
-Then I also used the pid_latency.bt script TODO ADD LINK to create an IO latency histogram for the pgbench run:
+Then I also used the [pid_latency.bt script](scripts/pid_latency.bt) to create an IO latency histogram for the pgbench run:
 
 ```bash
 # ./pid_latency.bt 3888616
@@ -441,28 +440,6 @@ Average latency: 1306526 ns
 
 The average latency was about 1,3ms here (pgbench settings: 1 client, 1 job).
 
-
-With bpftrace: filter by device and pgbench PID, get block_rq_issue and block_rq_complete events -> then calculate difference in time between them:
-
-Script can be found [here](scripts/blk_debug.bt)
-
-```bash
-# cat out1.log
-Attaching 4 probes...
-Monitoring pgbench for I/O latency...
-pgbench started with PID: 471595
-ISSUE: PID=471595, sector=46387496, dev=8388608
-COMPLETE: sector=46387496, latency=198461 ns
-ISSUE: PID=471595, sector=46387528, dev=8388608
-COMPLETE: sector=46387528, latency=458844 ns
-ISSUE: PID=471595, sector=29864976, dev=8388608
-COMPLETE: sector=29864976, latency=189674 ns
-ISSUE: PID=471595, sector=29865008, dev=8388608
-COMPLETE: sector=29865008, latency=171986 ns
-```
-
-Add up latencies: `198461 + 458844 + 189674 + 171986 ns = 1018965 ns = 1,02ms`
-
 However pgbench itself reports a latency avg of 2,87ms:
 
 ```text
@@ -473,6 +450,8 @@ initial connection time = 9.289 ms
 tps = 348.055502 (without initial connection time)
 ```
 
+TODO why is that?
+TODO pgbench local-path 
 Reference: biolatency without pgbench load
 
 ```bash
@@ -497,3 +476,4 @@ Tracing block device I/O... Hit Ctrl-C to end.
 
 avg = 2636 usecs, total: 4131653 usecs, count: 1567
 ```
+
