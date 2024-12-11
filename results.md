@@ -1,6 +1,6 @@
-## Running fio and observing IO metrics
+## Benchmarking IO with fio 
 
-1. Longhorn
+### 1. Longhorn
 
 Using biolatency on the mounted disk (/dev/sde, the block device created and mounted by Longhorn on the host):
 
@@ -97,7 +97,7 @@ Skips: 0 forward (0 -   0.0%)
 
 We can see the throughput and that it was a fio run with the option `--rw=write`.
 
-2. Local-Path
+### 2. Local-Path
 
 Observing io latency with biolatency the same way:
 
