@@ -147,7 +147,21 @@ TODO run biolatency, blktrace, bpftrace script on pid
 
 ---
 
-IOPs and throughput can also be observed with e.g. iostat:
+IOps (column tps) and throughput (column kB/s) can also be observed with e.g. iostat:
+
+For the Longhorn provider, iostat output looks like this:
+(/dev/sdf, because Longhorn volumes are mounted as an extra block device on the hosts):
+
+```text
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           9.02    0.00   11.03    0.00    0.00   79.95
+
+Device             tps      kB/s    rqm/s   await aqu-sz  areq-sz  %util
+sdc               1.00      4.00     0.00    1.00   0.00     4.00   0.40
+sdf            1354.00  10832.00     0.00    0.71   0.96     8.00 100.00
+```
+
+And for the local-path provider: 
 
 ```text
 # iostat -sxz 1
@@ -158,6 +172,45 @@ avg-cpu:  %user   %nice %system %iowait  %steal   %idle
 Device             tps      kB/s    rqm/s   await aqu-sz  areq-sz  %util
 sda            3898.00  31180.00  3889.00    0.25   0.96     8.00 100.00
 dm-1           7787.00  31180.00     0.00    0.25   1.93     4.00 100.00
+```
+
+`dm-1` in this case is a logical volume. Using the command
+
+```bash
+# ls -la /dev/mapper/
+total 0
+drwxr-xr-x  2 root root     180 Oct 11 09:22 .
+drwxr-xr-x 20 root root    4280 Dec 11 15:56 ..
+lrwxrwxrwx  1 root root       7 Oct 11 09:22 lvdocker -> ../dm-0
+lrwxrwxrwx  1 root root       7 Oct 11 09:22 lvk8s -> ../dm-1
+[...]
+```
+
+we can see that the corresponding LV name is `lvk8s`, which in this case is mounted to `/opt/k8s`.
+
+```bash
+# lsblk
+NAME              MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda                 8:0    0  150G  0 disk
+├─lvdocker        254:0    0   40G  0 lvm  /var/lib/docker
+└─lvk8s           254:1    0  100G  0 lvm  /opt/k8s
+[...]
+```
+
+Both of these values can also be observed using biotop:
+
+```bash
+# ./biotop -r 5 -C 5
+Tracing... Output every 5 secs. Hit Ctrl-C to end
+
+20:29:16 loadavg: 0.26 0.45 0.56 2/1905 3833460
+
+PID     COMM             D MAJ MIN DISK       I/O  Kbytes  AVGms
+3833308 fio              R 8   80  sdf       5589 44712.0   0.70
+924     jbd2/dm-0-8      R 8   0   sda         78  2816.0   0.41
+3833290 sleep            R 8   0   sda         16  1828.0   1.20
+2700    dockerd          R 8   0   sda        309  1516.0   0.43
+3833245 fio              R 8   0   sda         31   844.0   1.12
 ```
 
 ## Comparing local-path and Longhorn storage providers
@@ -361,6 +414,34 @@ avg = 1 msecs, total: 175444 msecs, count: 104602
 TODO: only add pid filter to bpftrace, print out histogram
 TODO histogram and calculate average instead of adding values!
 
+Then I also used the pid_latency.bt script TODO ADD LINK to create an IO latency histogram for the pgbench run:
+
+```bash
+# ./pid_latency.bt 3888616
+Monitoring pgbench for I/O latency...
+Average latency: 1306526 ns
+
+
+@io_count: 23877
+@pgbench_pid: 3888616
+@timestamps[8388672, 3849104]: 5315885357502770
+@total_latency_ns: 31195945024
+@usecs:
+[128, 256)            66 |                                                    |
+[256, 512)            55 |                                                    |
+[512, 1K)          13140 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[1K, 2K)            8573 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@                   |
+[2K, 4K)            1296 |@@@@@                                               |
+[4K, 8K)             647 |@@                                                  |
+[8K, 16K)             87 |                                                    |
+[16K, 32K)             5 |                                                    |
+[32K, 64K)             6 |                                                    |
+[64K, 128K)            2 |                                                    |
+```
+
+The average latency was about 1,3ms here (pgbench settings: 1 client, 1 job).
+
+
 With bpftrace: filter by device and pgbench PID, get block_rq_issue and block_rq_complete events -> then calculate difference in time between them:
 
 Script can be found [here](scripts/blk_debug.bt)
@@ -395,13 +476,24 @@ tps = 348.055502 (without initial connection time)
 Reference: biolatency without pgbench load
 
 ```bash
-# ./biolatency -m -d sde -e
+# ./biolatency -d sde -e
 Tracing block device I/O... Hit Ctrl-C to end.
-^C
-     msecs               : count     distribution
-         0 -> 1          : 297      |*****************                       |
-         2 -> 3          : 675      |****************************************|
-         4 -> 7          : 28       |*                                       |
 
-avg = 1 msecs, total: 1909 msecs, count: 1000
+     usecs               : count     distribution
+         0 -> 1          : 0        |                                        |
+         2 -> 3          : 0        |                                        |
+         4 -> 7          : 0        |                                        |
+         8 -> 15         : 0        |                                        |
+        16 -> 31         : 0        |                                        |
+        32 -> 63         : 0        |                                        |
+        64 -> 127        : 0        |                                        |
+       128 -> 255        : 0        |                                        |
+       256 -> 511        : 0        |                                        |
+       512 -> 1023       : 37       |*                                       |
+      1024 -> 2047       : 391      |**************                          |
+      2048 -> 4095       : 1060     |****************************************|
+      4096 -> 8191       : 59       |**                                      |
+      8192 -> 16383      : 20       |                                        |
+
+avg = 2636 usecs, total: 4131653 usecs, count: 1567
 ```
