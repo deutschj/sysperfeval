@@ -1,6 +1,8 @@
-## Running fio and observing IO latency
+## Running fio and observing IO metrics
 
-Using biolatency on the mounted disk (sde, the Kubernetes mount on the host):
+1. Longhorn
+
+Using biolatency on the mounted disk (/dev/sde, the block device created and mounted by Longhorn on the host):
 
 ```bash
 ideweiiss8508:/usr/share/bcc/tools # ./biolatency -d sde
@@ -24,51 +26,144 @@ Tracing block device I/O... Hit Ctrl-C to end.
      16384 -> 32767      : 68       |                                        |
 ```
 
-The same can be done using bpftrace, bpftrace_iolatency.bt script:
+The same can be done using a bpftrace script that traces only for one PID [(link)](scripts/pid_latency.bt):
 
 ```bash
-# cat bpftrace_iolatency.bt
 #!/usr/bin/env bpftrace
 
-tracepoint:block:block_rq_issue /pid == $1/ {
-  @start[pid] = nsecs;
+BEGIN
+{
+    printf("Monitoring fio I/O latency...\n");
+    @fio_pid = $1;
 }
 
-tracepoint:block:block_rq_complete /pid == $1 && @start[pid]/
+tracepoint:block:block_rq_issue
+/@fio_pid && pid == @fio_pid/
 {
-  @us[pid] = hist((nsecs - @start[pid]) / 1000000);
-  delete(@start[pid]);
+    @timestamps[args->dev, args->sector] = nsecs;
+}
+
+tracepoint:block:block_rq_complete
+/@fio_pid && @timestamps[args->dev, args->sector]/
+{
+        $latency_ns = nsecs - @timestamps[args->dev, args->sector];
+        @usecs = hist($latency_ns / 1000);
+        delete(@timestamps[args->dev, args->sector]);
 }
 ```
 
 With the fio PID attached:
 
 ```bash
-# ./bpftrace_iolatency.bt 654526
-Attaching 2 probes...
-^C
+./pid_latency.bt 3337624
+Attaching 3 probes...
+Monitoring pgbench for I/O latency...
 
-@start[654526]: 5053340483333133
-@us[654526]:
-[0]                    1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
-[1]                    1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
-[2, 4)                 2 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[4, 8)                 0 |                                                    |
-[8, 16)                0 |                                                    |
-[16, 32)               0 |                                                    |
-[32, 64)               0 |                                                    |
-[64, 128)              0 |                                                    |
-[128, 256)             1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
-[256, 512)             0 |                                                    |
-[512, 1K)              0 |                                                    |
-[1K, 2K)               0 |                                                    |
-[2K, 4K)               1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
+@pgbench_pid: 3337624
+
+@usecs:
+[256, 512)            42 |                                                    |
+[512, 1K)          70886 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[1K, 2K)            1948 |@                                                   |
+[2K, 4K)            1010 |                                                    |
+[4K, 8K)             557 |                                                    |
+[8K, 16K)             23 |                                                    |
+[16K, 32K)             1 |                                                    |
 ```
-// why are the results so different? -> didn't trace the right fio process! (parent instead of child, which is the worker)
+
+Using blktrace on the block device that was created for the fio run, we get the following results:
+
+```text
+  8,80   1   126283   121.238929396 3328328  P   N [fio]
+  8,80   1   126284   121.238929602 3328328  U   N [fio] 1
+  8,80   1   126285   121.238930360 3328328  I  WS 1457344 + 16 [fio]
+  8,80   1   126286   121.238934424 3328328  D  WS 1457344 + 16 [fio]
+  8,80   1   126287   121.239531175     0  C  WS 1457344 + 16 [0]
+  8,80   1   126288   121.239545541 3328328  Q  WS 1457360 + 16 [fio]
+  8,80   1   126289   121.239547010 3328328  G  WS 1457360 + 16 [fio]
+[...]
+Total (8,80):
+ Reads Queued:           1,        4KiB  Writes Queued:     143,304,    1,146MiB
+ Read Dispatches:        1,        4KiB  Write Dispatches:  143,265,    1,146MiB
+ Reads Requeued:         0               Writes Requeued:         0
+ Reads Completed:        1,        4KiB  Writes Completed:  143,265,    1,146MiB
+ Read Merges:            0,        0KiB  Write Merges:           39,      156KiB
+ IO unplugs:       143,235               Timer unplugs:           1
+
+Throughput (R/W): 0KiB/s / 9,119KiB/s
+Events (8,80): 1,002,880 entries
+Skips: 0 forward (0 -   0.0%)
+```
+
+We can see the throughput and that it was a fio run with the option `--rw=write`.
+
+2. Local-Path
+
+Observing io latency with biolatency the same way:
+
+```bash
+./biolatency -d sda
+Tracing block device I/O... Hit Ctrl-C to end.
+     usecs               : count     distribution
+         0 -> 1          : 0        |                                        |
+         2 -> 3          : 0        |                                        |
+         4 -> 7          : 0        |                                        |
+         8 -> 15         : 0        |                                        |
+        16 -> 31         : 0        |                                        |
+        32 -> 63         : 0        |                                        |
+        64 -> 127        : 0        |                                        |
+       128 -> 255        : 268687   |****************************************|
+       256 -> 511        : 59086    |********                                |
+       512 -> 1023       : 1585     |                                        |
+      1024 -> 2047       : 451      |                                        |
+      2048 -> 4095       : 203      |                                        |
+      4096 -> 8191       : 10       |                                        |
+      8192 -> 16383      : 0        |                                        |
+     16384 -> 32767      : 2        |                                        |
+```
+
+Latency is significantly lower with the local-path provider.
+
+Running blktrace leads the following results:
+
+```text
+Total (8,0):
+ Reads Queued:          81,    2,128KiB  Writes Queued:     681,800,    3,635MiB
+ Read Dispatches:       81,    2,128KiB  Write Dispatches:  452,302,    3,635MiB
+ Reads Requeued:         0               Writes Requeued:         0
+ Reads Completed:       81,    2,128KiB  Writes Completed:  452,302,    3,635MiB
+ Read Merges:            0,        0KiB  Write Merges:      229,501,  918,040KiB
+ IO unplugs:       451,610               Timer unplugs:          48
+
+Throughput (R/W): 16KiB/s / 27,952KiB/s
+Events (8,0): 4,306,115 entries
+Skips: 0 forward (0 -   0.0%)
+```
+
+In this case I ran blktrace on the block device containing the local-path volume, but Kubernetes-native IO is done on the same block device, too.
+As a result we see a small Read workload in the blktrace results (from Kubernetes management components) - even though fio was run with the `--rw=write` option.
+
+TODO run biolatency, blktrace, bpftrace script on pid
+
+---
+
+IOPs and throughput can also be observed with e.g. iostat:
+
+```text
+# iostat -sxz 1
+Linux 6.4.0-150600.23.22-default        12/11/24        _x86_64_        (4 CPU)
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           3.28    0.00    2.02   22.98    0.00   71.72
+
+Device             tps      kB/s    rqm/s   await aqu-sz  areq-sz  %util
+sda            3898.00  31180.00  3889.00    0.25   0.96     8.00 100.00
+dm-1           7787.00  31180.00     0.00    0.25   1.93     4.00 100.00
+```
 
 ## Comparing local-path and Longhorn storage providers
 
 Longhorn: Block storage, with snapshots/backups/other enterprise features; local-path: only provides a node-local volume for the container.
+TODO add upstream links
 
 ### Benchmarking I/Ops and I/O Latency
 
@@ -97,10 +192,12 @@ PID    COMM               FD ERR PATH
 931449 fio                 4   0 /sys/block/sde/stat
 ```
 
-## Benchmarking with pgbench
+fio interacts with /sys/block/<disk-name>/stat to get disk statistics.
+
+## Benchmarking a PostgreSQL database workload with pgbench
 
 ##### Script that gets pgbench PID, and traces block_rq_(issue|insert|complete) tracepoints (IOps):
-
+TODO: really count IO instead of displaying events -> iostat, iotop
 ```bash
 #!/usr/bin/env bpftrace
 
@@ -187,7 +284,7 @@ COMPLETE: PID=3449590, dev=8:32, sector=2447400, bytes=4096, result=0
 COMPLETE: PID=3449590, dev=8:64, sector=6938832, bytes=8192, result=0
 ```
 
-##### IOPS with iotop (filtering on pid)
+##### IO throughput with iotop (filtering on pid)
 
 ```text
 Total DISK READ :       0.00 B/s | Total DISK WRITE :       0.00 B/s
@@ -204,7 +301,7 @@ TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND
 567937 be/4 26          3.25 M/s    6.72 M/s  ?unavailable?  postgres: postgres-test: app app 10.42.1.138(49130) UPDATE
 ```
 
--> postgres process does the IO, not pgbench
+One can see that the `postgres` process (the database itself) does the IO, not pgbench
 
 The same using biotop, 5-second summaries, filter by pid:
 
@@ -222,7 +319,7 @@ PID     COMM             D MAJ MIN DISK       I/O  Kbytes  AVGms
 Detaching...
 ```
 
-##### biolatency pgbench results
+##### biolatency results while running pgbench
 
 time=30, clients=1, jobs=1
 
@@ -260,6 +357,9 @@ Tracing block device I/O... Hit Ctrl-C to end.
 
 avg = 1 msecs, total: 175444 msecs, count: 104602
 ```
+
+TODO: only add pid filter to bpftrace, print out histogram
+TODO histogram and calculate average instead of adding values!
 
 With bpftrace: filter by device and pgbench PID, get block_rq_issue and block_rq_complete events -> then calculate difference in time between them:
 

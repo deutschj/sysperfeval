@@ -1,0 +1,21 @@
+#!/usr/bin/env bpftrace
+
+BEGIN
+{
+    printf("Monitoring fio I/O latency...\n");
+    @fio_pid = $1;
+}
+
+tracepoint:block:block_rq_issue
+/@fio_pid && pid == @fio_pid/
+{
+    @timestamps[args->dev, args->sector] = nsecs;
+}
+
+tracepoint:block:block_rq_complete
+/@fio_pid && @timestamps[args->dev, args->sector]/
+{
+        $latency_ns = nsecs - @timestamps[args->dev, args->sector];
+	@usecs = hist($latency_ns / 1000);
+        delete(@timestamps[args->dev, args->sector]);
+}

@@ -1,4 +1,4 @@
-storageClass: longhorn-2
+storageClass: local-path
 jobname: fio-seq-1
 nodename: ideweiiss8508
 random:
