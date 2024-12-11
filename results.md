@@ -124,6 +124,32 @@ Tracing block device I/O... Hit Ctrl-C to end.
 
 Latency is significantly lower with the local-path provider.
 
+Latency histogram only for the fio PID:
+
+```bash
+# ./pid_latency.bt 3932726
+Attaching 4 probes...
+Monitoring pgbench for I/O latency...
+Average latency: 251503 ns
+
+
+@io_count: 192631
+@pgbench_pid: 3932726
+@timestamps[8388608, 131681088]: 5317419757495715
+@timestamps[8388608, 131681104]: 5317419757769517
+@timestamps[8388608, 131681120]: 5317419758020993
+@timestamps[8388608, 131681136]: 5317419758268440
+@total_latency_ns: 48447434813
+@usecs:
+[128, 256)        152464 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[256, 512)         39032 |@@@@@@@@@@@@@                                       |
+[512, 1K)            770 |                                                    |
+[1K, 2K)             286 |                                                    |
+[2K, 4K)              79 |                                                    |
+```
+
+Average latency displayed is about 0,25ms.
+
 Running blktrace leads the following results:
 
 ```text
