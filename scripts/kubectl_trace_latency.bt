@@ -3,7 +3,7 @@
 BEGIN
 {
     printf("Monitoring pgbench for I/O latency...\n");
-    @pgbench_pid = $1;
+    @pgbench_pid = $container_pid;
     @total_latency_ns = 0;  // Total latency in nanoseconds
     @io_count = 0;          // Total number of completed I/Os
 }
