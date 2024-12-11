@@ -3,17 +3,17 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ .Values.random.jobname }} 
+  name: {{ .Values.jobname }} 
 spec:
   template:
     spec:
       volumes:
-      - name: "fio-config-{{ .Values.random.jobname }}"
+      - name: "fio-config-{{ .Values.jobname }}"
         configMap:
-          name: {{ .Values.random.jobname }} 
+          name: "{{ .Values.jobname }}-cfg"
       - name: data-volume
         persistentVolumeClaim:
-          claimName: "fio-pvc"
+          claimName: "fio-pvc-{{ .Values.jobname }}"
       containers:
       - name: fio
         image: artifacts.endress.com/docker-mirror/xridge/fio
@@ -23,7 +23,7 @@ spec:
         - /opt/fio/fio-random.job
         command: ["fio", "/opt/fio/fio-random.job"]
         volumeMounts:
-        - name: "fio-config-{{ .Values.random.jobname }}"
+        - name: "fio-config-{{ .Values.jobname }}"
           mountPath: /opt/fio
         - name: data-volume
           mountPath: /datadir
@@ -42,13 +42,13 @@ spec:
               - key: kubernetes.io/hostname
                 operator: In
                 values:
-                  - ideweiiss8508
+                  - {{ .Values.nodename }}
 {{- end }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: "fio-pvc"
+  name: "fio-pvc-{{ .Values.jobname }}"
 spec:
   accessModes:
     - ReadWriteOnce
@@ -61,17 +61,17 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ .Values.sequential.jobname }}
+  name: {{ .Values.jobname }}
 spec:
   template:
     spec:
       volumes:
-      - name: "fio-config-{{ .Values.sequential.jobname }}"
+      - name: "fio-config-{{ .Values.jobname }}"
         configMap:
-          name: "{{ .Values.sequential.jobname }}"
+          name: "{{ .Values.jobname }}-cfg"
       - name: data-volume
         persistentVolumeClaim:
-          claimName: fio-pvc
+          claimName: "fio-pvc-{{ .Values.jobname }}"
       containers:
       - name: fio
         image: artifacts.endress.com/docker-mirror/xridge/fio
@@ -81,7 +81,7 @@ spec:
         - /opt/fio/fio-sequential.job
         command: ["fio", "/opt/fio/fio-sequential.job"]
         volumeMounts:
-        - name: "fio-config-{{ .Values.sequential.jobname }}"
+        - name: "fio-config-{{ .Values.jobname }}"
           mountPath: /opt/fio
         - name: data-volume
           mountPath: /datadir
@@ -100,5 +100,5 @@ spec:
               - key: kubernetes.io/hostname
                 operator: In
                 values:
-                - ideweiiss8508
+                  - {{ .Values.nodename }}
 {{- end }}

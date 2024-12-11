@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Values.random.jobname }}
+  name: {{ .Values.jobname }}-cfg
 data:
   fio-random.job: |
     [global]
@@ -31,5 +31,5 @@ data:
     numjobs={{ .Values.sequential.numjobs }}
 
     [wal_write]
-    rw=rw               # Sequential write pattern
+    rw=write              # Sequential write pattern
 

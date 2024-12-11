@@ -64,7 +64,25 @@ Attaching 2 probes...
 [1K, 2K)               0 |                                                    |
 [2K, 4K)               1 |@@@@@@@@@@@@@@@@@@@@@@@@@@                          |
 ```
-// why are the results so different?
+// why are the results so different? -> didn't trace the right fio process! (parent instead of child, which is the worker)
+
+## Comparing local-path and Longhorn storage providers
+
+Longhorn: Block storage, with snapshots/backups/other enterprise features; local-path: only provides a node-local volume for the container.
+
+### Benchmarking I/Ops and I/O Latency
+
+Running fio as a container in Kubernetes: sequential and random read/write workloads
+
+![Longhorn Sequential Read Performance](fio-plot/longhorn/sequential/reads/Longhorn-Sequential-Reads_2024-12-10_152218_sm.png)
+
+![Longhorn Random Read Performance](fio-plot/longhorn/random/Longhorn-Random-Reads_2024-12-08_181133_Or.png)
+
+Performance for both providers compared (numjobs=1, iodepth=1):
+
+![local-path vs Longhorn IO performance](fio-plot/Compared-Sequential-Reads_2024-12-11_140823_Bw.png)
+
+The speed difference is also explained in the following comment: <https://github.com/longhorn/longhorn/issues/1104#issuecomment-598826969>
 
 Opensnoop results (files that the fio process opens):
 

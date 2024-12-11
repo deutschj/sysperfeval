@@ -1,9 +1,9 @@
-storageClass: local-path
+storageClass: longhorn-2
+jobname: fio-seq-1
+nodename: ideweiiss8508
 random:
-  enabled: true
-  numjobs: 32
-  jobname: fio-random
-sequential:
-  jobname: fio-seq
   enabled: false
   numjobs: 32
+sequential:
+  enabled: true
+  numjobs: 1
