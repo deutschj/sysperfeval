@@ -252,6 +252,10 @@ Running fio as a container in Kubernetes: sequential and random read/write workl
 
 ![Longhorn Random Read Performance](fio-plot/longhorn/random/Longhorn-Random-Reads_2024-12-08_181133_Or.png)
 
+![Local-Path Sequential Read Performance](fio-plot/local/sequential/read/Local-Path-Sequential-Reads_2024-12-11_085556_Ca.png)
+
+![Local-Path Random Read Performance](fio-plot/local/random/Local-Path-Random-Reads_2024-12-10_184203_hc.png)
+
 Performance for both providers compared (numjobs=1, iodepth=1):
 
 ![local-path vs Longhorn IO performance](fio-plot/Compared-Sequential-Reads_2024-12-11_140823_Bw.png)
