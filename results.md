@@ -256,7 +256,7 @@ Running fio as a container in Kubernetes: sequential and random read/write workl
 
 ![Local-Path Random Read Performance](fio-plot/local/random/Local-Path-Random-Reads_2024-12-10_184203_hc.png)
 
-Performance for both providers compared (numjobs=1, iodepth=1):
+Performance for both providers compared (numjobs=1, iodepth=1) - Local-Path on the left, Longhorn on the right:
 
 ![local-path vs Longhorn IO performance](fio-plot/Compared-Sequential-Reads_2024-12-11_140823_Bw.png)
 
@@ -532,3 +532,88 @@ avg = 2636 usecs, total: 4131653 usecs, count: 1567
 
 ### Measuring Postgres Latency
 TODO
+
+## Docker vs Kubernetes PostgreSQL Latency
+
+### Docker:
+
+Running pgbench:
+
+```bash
+# pgbench -i -s 250 -U postgres -h localhost postgres
+dropping old tables...
+NOTICE:  table "pgbench_accounts" does not exist, skipping
+NOTICE:  table "pgbench_branches" does not exist, skipping
+NOTICE:  table "pgbench_history" does not exist, skipping
+NOTICE:  table "pgbench_tellers" does not exist, skipping
+creating tables...
+generating data (client-side)...
+vacuuming...
+creating primary keys...
+done in 32.94 s (drop tables 0.00 s, create tables 0.00 s, client-side generate 22.34 s, vacuum 0.95 s, primary keys 9.65 s).
+
+
+# pgbench -U postgres -c 1 -j 1 --time 60 postgres
+pgbench (17.2 (Debian 17.2-1.pgdg120+1))
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 250
+query mode: simple
+number of clients: 1
+number of threads: 1
+maximum number of tries: 1
+duration: 60 s
+number of transactions actually processed: 76177
+number of failed transactions: 0 (0.000%)
+latency average = 0.788 ms
+initial connection time = 2.624 ms
+tps = 1269.669697 (without initial connection time)
+```
+
+### Kubernetes - Local-Path provider
+
+```bash
+pgbench (17.0 (Debian 17.0-1.pgdg110+1))
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 250
+query mode: simple
+number of clients: 1
+number of threads: 1
+maximum number of tries: 1
+duration: 60 s
+number of transactions actually processed: 54366
+number of failed transactions: 0 (0.000%)
+latency average = 1.103 ms
+initial connection time = 9.019 ms
+tps = 906.233398 (without initial connection time)
+```
+
+Running with 10 clients and opening a new connection for each query (`-C`), the difference is more noticeable:
+
+Docker:
+
+```bash
+# pgbench -U postgres -c 10 -S -C --time 60 postgres
+pgbench (17.2 (Debian 17.2-1.pgdg120+1))
+[...]
+number of clients: 10
+number of transactions actually processed: 27313
+number of failed transactions: 0 (0.000%)
+latency average = 21.968 ms
+average connection time = 2.180 ms
+tps = 455.198254 (including reconnection times)
+```
+
+Kubernetes:
+
+```bash
+pgbench (17.0 (Debian 17.0-1.pgdg110+1))
+[...]
+number of clients: 10
+number of transactions actually processed: 7472
+latency average = 80.309 ms
+average connection time = 7.988 ms
+tps = 124.518810 (including reconnection times)
+```
+
