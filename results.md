@@ -169,8 +169,6 @@ Skips: 0 forward (0 -   0.0%)
 In this case I ran blktrace on the block device containing the local-path volume, but Kubernetes-native IO is done on the same block device, too.
 As a result we see a small Read workload in the blktrace results (from Kubernetes management components) - even though fio was run with the `--rw=write` option.
 
-TODO run biolatency, blktrace, bpftrace script on pid
-
 ---
 
 IOps (column tps) and throughput (column kB/s) can also be observed with e.g. iostat:
@@ -260,6 +258,8 @@ Performance for both providers compared (numjobs=1, iodepth=1):
 
 The speed difference is also explained in the following comment: <https://github.com/longhorn/longhorn/issues/1104#issuecomment-598826969>
 
+More comparison plots can be found in the [fio-plots folder](fio-plots/).
+
 Opensnoop results (files that the fio process opens):
 
 ```bash
@@ -278,93 +278,6 @@ fio interacts with /sys/block/<disk-name>/stat to get disk statistics.
 ## Benchmarking a PostgreSQL database workload with pgbench
 
 ### 1. Longhorn
-##### Script that gets pgbench PID, and traces block_rq_(issue|insert|complete) tracepoints (IOps):
-TODO: delete this and just use biotop
-```bash
-#!/usr/bin/env bpftrace
-
-BEGIN
-{
-    printf("Monitoring for new `pgbench` process creations...\n");
-}
-
-// Trace process creation (execve)
-tracepoint:syscalls:sys_enter_execve
-/comm == "pgbench"/
-{
-    @target_pid = pid; // Store the `pgbench` PID
-    printf("pgbench started with PID: %d\n", pid);
-}
-
-// Trace block requests when they are inserted into the queue
-tracepoint:block:block_rq_insert
-/@target_pid && pid == @target_pid/
-{
-    printf("INSERT: PID=%d, dev=%d:%d, sector=%llu, bytes=%u, rw=%s\n",
-           pid,
-           args->dev >> 20, args->dev & 0xfffff, // Major and minor device numbers
-           args->sector,
-           args->nr_sector * 512, // Sector size in bytes
-           args->rwbs);
-}
-
-// Trace block requests when they are issued to the device
-tracepoint:block:block_rq_issue
-/@target_pid && pid == @target_pid/
-{
-    printf("ISSUE: PID=%d, dev=%d:%d, sector=%llu, bytes=%u, rw=%s\n",
-           pid,
-           args->dev >> 20, args->dev & 0xfffff,
-           args->sector,
-           args->nr_sector * 512,
-           args->rwbs);
-}
-
-// Trace block requests when they are completed
-tracepoint:block:block_rq_complete
-/@target_pid && pid == @target_pid/
-{
-    printf("COMPLETE: PID=%d, dev=%d:%d, sector=%llu, bytes=%u, result=%d\n",
-           pid,
-           args->dev >> 20, args->dev & 0xfffff,
-           args->sector,
-           args->nr_sector * 512,
-           args->error);
-}
-```
-
-##### Script Results:
-
-```text
-# ./blk_io.bt
-Attaching 5 probes...
-Monitoring for new `pgbench` process creations...
-pgbench started with PID: 3449590
-INSERT: PID=3449590, dev=8:0, sector=46387496, bytes=16384, rw=RA
-ISSUE: PID=3449590, dev=8:0, sector=46387496, bytes=16384, rw=RA
-INSERT: PID=3449590, dev=8:0, sector=46387528, bytes=184320, rw=RA
-ISSUE: PID=3449590, dev=8:0, sector=46387528, bytes=184320, rw=RA
-INSERT: PID=3449590, dev=8:0, sector=29863448, bytes=4096, rw=RA
-ISSUE: PID=3449590, dev=8:0, sector=29863448, bytes=4096, rw=RA
-INSERT: PID=3449590, dev=8:0, sector=29484856, bytes=4096, rw=RM
-INSERT: PID=3449590, dev=8:0, sector=29864976, bytes=16384, rw=RA
-ISSUE: PID=3449590, dev=8:0, sector=29864976, bytes=16384, rw=RA
-INSERT: PID=3449590, dev=8:0, sector=29865008, bytes=12288, rw=RA
-ISSUE: PID=3449590, dev=8:0, sector=29865008, bytes=12288, rw=RA
-INSERT: PID=3449590, dev=8:0, sector=29469376, bytes=4096, rw=RM
-INSERT: PID=3449590, dev=8:0, sector=62505400, bytes=282624, rw=RA
-ISSUE: PID=3449590, dev=8:0, sector=62505400, bytes=282624, rw=RA
-INSERT: PID=3449590, dev=8:0, sector=62506024, bytes=57344, rw=RA
-ISSUE: PID=3449590, dev=8:0, sector=62506024, bytes=57344, rw=RA
-INSERT: PID=3449590, dev=8:0, sector=62506136, bytes=36864, rw=RA
-ISSUE: PID=3449590, dev=8:0, sector=62506136, bytes=36864, rw=RA
-COMPLETE: PID=3449590, dev=8:0, sector=62506136, bytes=36864, result=0
-INSERT: PID=3449590, dev=8:0, sector=71849440, bytes=12288, rw=RA
-ISSUE: PID=3449590, dev=8:0, sector=71849440, bytes=12288, rw=RA
-COMPLETE: PID=3449590, dev=8:16, sector=53178064, bytes=8192, result=0
-COMPLETE: PID=3449590, dev=8:32, sector=2447400, bytes=4096, result=0
-COMPLETE: PID=3449590, dev=8:64, sector=6938832, bytes=8192, result=0
-```
 
 ##### IO throughput with iotop (filtering on pid)
 
@@ -614,4 +527,4 @@ avg = 2636 usecs, total: 4131653 usecs, count: 1567
 ```
 
 ### Measuring Postgres Latency
-
+TODO
