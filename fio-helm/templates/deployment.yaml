@@ -44,6 +44,7 @@ spec:
                 values:
                   - {{ .Values.nodename }}
 {{- end }}
+{{ if .Values.pvc.enabled }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -56,6 +57,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
+{{- end }}
 {{- if .Values.sequential.enabled }}        
 ---
 apiVersion: batch/v1
@@ -70,8 +72,17 @@ spec:
         configMap:
           name: "{{ .Values.jobname }}-cfg"
       - name: data-volume
+        {{- if .Values.iscsi.enabled }}
+        iscsi:
+          targetPortal: {{ .Values.iscsi.targetPortal }}
+          iqn: {{ .Values.iscsi.iqn }}
+          lun: 1
+          fsType: ext4
+          readOnly: true
+        {{- else }}
         persistentVolumeClaim:
-          claimName: "fio-pvc-{{ .Values.jobname }}"
+          claimName: {{ .Values.pvc.name }}
+        {{- end }}
       containers:
       - name: fio
         image: artifacts.endress.com/docker-mirror/xridge/fio

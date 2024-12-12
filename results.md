@@ -277,6 +277,7 @@ fio interacts with /sys/block/<disk-name>/stat to get disk statistics.
 
 ## Benchmarking a PostgreSQL database workload with pgbench
 
+### 1. Longhorn
 ##### Script that gets pgbench PID, and traces block_rq_(issue|insert|complete) tracepoints (IOps):
 TODO: delete this and just use biotop
 ```bash
@@ -478,7 +479,116 @@ tps = 348.055502 (without initial connection time)
 
 TODO why is that?
 TODO pgbench local-path 
-Reference: biolatency without pgbench load
+
+### 2. Local-Path
+
+Analogically monitoring the latency distribution with biolatency:
+
+```bash
+./biolatency -d sda
+Tracing block device I/O... Hit Ctrl-C to end.
+^C
+     usecs               : count     distribution
+         0 -> 1          : 0        |                                        |
+         2 -> 3          : 0        |                                        |
+         4 -> 7          : 0        |                                        |
+         8 -> 15         : 0        |                                        |
+        16 -> 31         : 0        |                                        |
+        32 -> 63         : 0        |                                        |
+        64 -> 127        : 21       |                                        |
+       128 -> 255        : 26584    |****************                        |
+       256 -> 511        : 66021    |****************************************|
+       512 -> 1023       : 38016    |***********************                 |
+      1024 -> 2047       : 3536     |**                                      |
+      2048 -> 4095       : 333      |                                        |
+      4096 -> 8191       : 88       |                                        |
+      8192 -> 16383      : 24       |                                        |
+     16384 -> 32767      : 28       |                                        |
+     32768 -> 65535      : 56       |                                        |
+     65536 -> 131071     : 34       |                                        |
+    131072 -> 262143     : 1        |                                        |
+```
+
+Here we can see results similar to the fio tests - latency is significantly lower on average than for the Longhorn provider (block storage).
+
+Afterwards I also looked at the latency distribution for the postgres pid only:
+
+```bash
+./pid_latency.bt 3655804
+Attaching 4 probes...
+Monitoring pgbench for I/O latency...
+Average latency: 457314 ns
+
+
+@io_count: 60748
+@pgbench_pid: 3655804
+@timestamps[8388608, 203462608]: 291469309421421
+@timestamps[8388608, 210069408]: 291480919299663
+@timestamps[8388608, 210127152]: 291488154966756
+@timestamps[8388608, 210258688]: 291498673724290
+@timestamps[8388608, 199844544]: 291499267562530
+@timestamps[8388608, 210226288]: 291510238528823
+@total_latency_ns: 27780922486
+@usecs:
+[64, 128)             10 |                                                    |
+[128, 256)         25013 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[256, 512)         21049 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@         |
+[512, 1K)          10603 |@@@@@@@@@@@@@@@@@@@@@@                              |
+[1K, 2K)            3693 |@@@@@@@                                             |
+[2K, 4K)             281 |                                                    |
+[4K, 8K)              33 |                                                    |
+[8K, 16K)             27 |                                                    |
+[16K, 32K)             6 |                                                    |
+[32K, 64K)            22 |                                                    |
+[64K, 128K)           11 |                                                    |
+```
+
+Results match with the biolatency results, we can see less outliers that have high latency than in biolatency.
+This can be because we're monitoring the whole sda disk with biolatency, and Kubernetes management component's IO operations are included there as well (opposing to when monitoring only the postgres PID).
+
+I tried exploring this further in section [Measuring Postgres Latency](#measuring-postgres-latency).
+
+##### Monitoring IOps and throughput with iostat/iotop
+
+```bash
+# iotop -bod 5
+Total DISK READ :       2.03 M/s | Total DISK WRITE :      11.60 M/s
+Actual DISK READ:       2.03 M/s | Actual DISK WRITE:      11.60 M/s
+    TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN      IO    COMMAND
+3677407 be/4 26          2.03 M/s   11.60 M/s  0.00 % 28.46 % postgres: postgres-test: app app 10.42.2.137(34914) INSERT
+
+Total DISK READ :       3.12 M/s | Total DISK WRITE :      28.07 M/s
+Actual DISK READ:       3.19 M/s | Actual DISK WRITE:      22.67 M/s
+    TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN      IO    COMMAND
+3677407 be/4 26          3.12 M/s   23.11 M/s  0.00 % 44.25 % postgres: postgres-test: app app 10.42.2.137(34914) idle in transaction
+```
+
+
+```bash
+Linux 6.4.0-150600.23.22-default        12/12/24        _x86_64_        (4 CPU)
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          10.00    0.00    8.25    9.75    0.00   72.00
+
+Device             tps      kB/s    rqm/s   await aqu-sz  areq-sz  %util
+sda            1825.00  41656.00    29.00    0.44   0.81    22.83  99.20
+dm-1           1845.00  41656.00     0.00    0.46   0.85    22.58  99.20
+
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+          11.78    0.00    9.02    9.77    0.00   69.42
+
+Device             tps      kB/s    rqm/s   await aqu-sz  areq-sz  %util
+sda            5542.00  72436.00    37.00    0.51   2.83    13.07 100.00
+sdb              18.00    172.00    25.00    0.44   0.01     9.56   1.60
+sdc               5.00     72.00    13.00    0.80   0.00    14.40   0.80
+dm-0             23.00     92.00     0.00    3.83   0.09     4.00   0.80
+dm-1           5547.00  72368.00     0.00    0.48   2.69    13.05 100.00
+dm-3             12.00     48.00     0.00    1.00   0.01     4.00   1.20
+dm-5             31.00    124.00     0.00    0.00   0.00     4.00   0.80
+```
+
+Higher IOps and throughput values than for the Longhorn solution can be observed here as well. 
+
+For reference: biolatency without pgbench load (lower number of captured operations)
 
 ```bash
 # ./biolatency -d sde -e
@@ -502,4 +612,6 @@ Tracing block device I/O... Hit Ctrl-C to end.
 
 avg = 2636 usecs, total: 4131653 usecs, count: 1567
 ```
+
+### Measuring Postgres Latency
 

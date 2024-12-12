@@ -1,4 +1,11 @@
-storageClass: local-path
+storageClass: longhorn-static
+pvc:
+  enabled: false
+  name: iscsi-test
+iscsi: 
+  enabled: false
+  targetPortal: 10.42.1.176:3260
+  iqn: iqn.2019-10.io.longhorn:iscsi-test
 jobname: fio-seq-1
 nodename: ideweiiss8508
 random:
