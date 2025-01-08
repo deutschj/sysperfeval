@@ -1,0 +1,11 @@
+tracepoint:syscalls:sys_enter_read /comm == "postgres"/ {
+    @start[tid] = nsecs;
+}
+
+tracepoint:syscalls:sys_enter_close /comm == "postgres"/ {
+    if (@start[tid]) {
+        printf("PID: %d Latency between read and close: %d ns\n", pid, nsecs - @start[tid]);
+        delete(@start[tid]);
+    }
+}
+

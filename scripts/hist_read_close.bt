@@ -1,0 +1,15 @@
+tracepoint:syscalls:sys_enter_read /comm == "postgres"/ {
+    @start[tid] = nsecs;
+}
+
+tracepoint:syscalls:sys_enter_close /comm == "postgres"/ {
+    if (@start[tid]) {
+        @latency = hist((nsecs - @start[tid]) / 1000); // Convert to microseconds
+        delete(@start[tid]);
+    }
+}
+
+END {
+    print(@latency);
+}
+
