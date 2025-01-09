@@ -330,7 +330,7 @@ It seems like I had the wrong PID for the running postgres process the first tim
 Afterwards, there is a wait4() syscall that waits for the child process to exit. We can measure the time between these two syscalls to get the query latency (this does not contain network latency).
 However this measurement contains e.g. scheduler latency as well, and e.g. if the child process has to wait, this wait time would be included in my measurement, too.
 
-Measuring the time between clone() and wait4(): [script link](scripts/clone_wait4.bt)
+Measuring the time between clone() and wait4(): [script link](../scripts/clone_wait4.bt)
 
 ```console
 # ./clone_wait4.bt
