@@ -291,3 +291,67 @@ We can observe a bi-modal distribution when looking at time from read() to close
 ```
 
 I ran the query 500 times, 482 of which had a latency of about ~220ms. The other read() statements in the 1-8us range are most probably smaller read operations, that are performed in the course of the query processing.
+
+Looking at strace for postgres again:
+
+```console
+# strace -e trace=all -p 3878649
+strace: Process 3878649 attached
+epoll_wait(10, [{events=EPOLLIN, data={u32=2759647744, u64=94431910617600}}], 4, 51549) = 1
+accept(9, {sa_family=AF_UNIX}, [128 => 2]) = 11
+getpid()                                = 21
+getpid()                                = 21
+rt_sigprocmask(SIG_SETMASK, ~[ILL TRAP ABRT BUS FPE SEGV CONT SYS RTMIN RT_1], [URG], 8) = 0
+clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, child_tidptr=0x7f2d3c33bd10) = 32709
+rt_sigprocmask(SIG_SETMASK, [URG], NULL, 8) = 0
+close(11)                               = 0
+epoll_wait(10, 0x55e2a47ce218, 4, 60000) = -1 EINTR (Interrupted system call)
+--- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=32709, si_uid=26, si_status=0, si_utime=0, si_stime=0} ---
+getpid()                                = 21
+kill(21, SIGURG)                        = 0
+rt_sigreturn({mask=[URG]})              = -1 EINTR (Interrupted system call)
+wait4(-1, [{WIFEXITED(s) && WEXITSTATUS(s) == 0}], WNOHANG, NULL) = 32709
+wait4(-1, 0x7ffec8e7971c, WNOHANG, NULL) = 0
+epoll_wait(10, [{events=EPOLLIN, data={u32=2759647672, u64=94431910617528}}], 4, 60000) = 1
+read(3, "\27\0\0\0\0\0\0\0\0\0\0\0\25\0\0\0\32\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 1024) = 128
+epoll_wait(10, [{events=EPOLLIN, data={u32=2759647744, u64=94431910617600}}], 4, 60000) = 1
+accept(9, {sa_family=AF_UNIX}, [128 => 2]) = 11
+getpid()                                = 21
+getpid()                                = 21
+rt_sigprocmask(SIG_SETMASK, ~[ILL TRAP ABRT BUS FPE SEGV CONT SYS RTMIN RT_1], [URG], 8) = 0
+clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, child_tidptr=0x7f2d3c33bd10) = 32710
+rt_sigprocmask(SIG_SETMASK, [URG], NULL, 8) = 0
+close(11)                               = 0
+epoll_wait(10, 0x55e2a47ce218, 4, 60000) = -1 EINTR (Interrupted system call)
+```
+
+It seems like I had the wrong PID for the running postgres process the first time. Here we can observe that a new child process is spawned upon each select statement (new connection is made) -> clone()
+
+Afterwards, there is a wait4() syscall that waits for the child process to exit. We can measure the time between these two syscalls to get the query latency (this does not contain network latency).
+However this measurement contains e.g. scheduler latency as well, and e.g. if the child process has to wait, this wait time would be included in my measurement, too.
+
+Measuring the time between clone() and wait4(): [script link](scripts/clone_wait4.bt)
+
+```console
+# ./clone_wait4.bt
+Attaching 3 probes...
+Cloned process PID is 33611
+Time for PID 33611 is 4590 us
+Cloned process PID is 33612
+Time for PID 33612 is 4075 us
+Cloned process PID is 33614
+Time for PID 33614 is 6023 us
+Cloned process PID is 33615
+Cloned process PID is 33616
+Time for PID 33615 is 11690 us
+Cloned process PID is 33617
+Time for PID 33616 is 288260 us
+Cloned process PID is 33618
+Time for PID 33617 is 236352 us
+Cloned process PID is 33619
+Time for PID 33618 is 235468 us
+Cloned process PID is 33620
+Time for PID 33619 is 229311 us
+```
+
+As I ran 20 queries, PID 33616 is the first select statement being executed (response time ~288ms).

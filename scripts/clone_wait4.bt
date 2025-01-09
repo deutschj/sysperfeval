@@ -1,0 +1,23 @@
+#!/usr/bin/env bpftrace
+
+tracepoint:syscalls:sys_enter_clone
+/comm == "postgres"/
+{
+    @start[pid] = nsecs;
+}
+
+tracepoint:syscalls:sys_exit_clone
+/@start[pid]/
+{
+    printf("Cloned process PID is %d\n", args->ret);
+    @start[args->ret] = @start[pid];
+    delete(@start[pid]);
+}
+
+tracepoint:syscalls:sys_exit_wait4
+/@start[args->ret]/
+{
+    @us[args->ret] = (nsecs - @start[args->ret]) / 1000;
+    printf("Time for PID %d is %d us\n", args->ret, @us[args->ret]);
+    delete(@start[args->ret]);
+}
