@@ -1,6 +1,6 @@
-### Tracing select statement with strace
+### Tracing select statement process with strace
 
-To find out which systemcalls are done when a postgres select statement happens, I used strace. I'm planning to later measure the IO latency during a query using the systemcalls, that the select statement calls.
+To find out which systemcalls are done when a postgres select statement happens, I used strace. I'm planning to later measure the IO latency during a query using the systemcalls, that are called during execution of the select statement.
 
 I created a table with 500 000 lines and used the following select statement:
 
@@ -8,169 +8,9 @@ I created a table with 500 000 lines and used the following select statement:
 
 Using strace on the postgresql parent PID yielded the following results:
 
-`strace -f -e trace=all -p 3708884
-strace: Process 3708884 attached
-epoll_wait(9, 0x55e597d2d658, 4, 47101) = -1 EINTR (Interrupted system call)
---- SIGUSR1 {si_signo=SIGUSR1, si_code=SI_USER, si_pid=65, si_uid=999} ---
-getpid()                                = 1
-kill(1, SIGURG)                         = 0
-rt_sigreturn({mask=[URG]})              = -1 EINTR (Interrupted system call)
-getpid()                                = 1
-rt_sigprocmask(SIG_SETMASK, ~[ILL TRAP ABRT BUS FPE SEGV CONT SYS RTMIN RT_1], [URG], 8) = 0
-clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, child_tidptr=0x7fbc5d339d50) = 104013
-strace: Process 3936174 attached
-[...]
-[pid 3936174] read(6, "\27'Y\0\21\0\0\0\353\4\0\0\353\4\0\0\341\4\0\0\341\4\0\0\347\4\0\0\347\4\0\0"..., 524) = 524
-[pid 3936174] close(6)                  = 0
-[pid 3936174] openat(AT_FDCWD, "base/1/pg_internal.init", O_RDONLY) = 6
-[pid 3936174] newfstatat(6, "", {st_mode=S_IFREG|0600, st_size=158340, ...}, AT_EMPTY_PATH) = 0
-[pid 3936174] read(6, "f2W\0\350\1\0\0\0\0\0\0\177\6\0\0\1\0\0\0m\n\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0h\0\0\0\0\0\0\0\257\0\0\0umuser\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\1\0\0\0\0\0\0\0\0\0\0\0\214\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\23\0\0\0@\0\2\0\377\377\377\377\377\377\377\377\0\0\0c"..., 4096) = 4096
-[pid 3936174] read(6, "\274\177\0\0\0\244\340\227\345U\0\0 \245\340\227\345U\0\0(\246\340\227\345U\0\08\246\340\227"..., 4096) = 4096
-[pid 3936174] read(6, "h7\342\227\345U\0\0x7\342\227\345U\0\0\2107\342\227\345U\0\0\2607\342\227\345U\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\343\10\0\0\376\377\1\0\0\0\0\0\377\377\377\377\0\0\0cp\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "condefault\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\350\1\0\0\0\0\0\0\177\6\0\0\1\0\0\0\26\r\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0:\3\0\0defaclnamespace\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\32\0\0\0\4\0\1\0\0\0\0\0\377\377\377\377\0\0\1ip\0\1\0\0\0\0\0\1\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\22\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\274\177\0\0\0 \341\227\345U\0\0 !\341\227\345U\0\0(\"\341\227\345U\0\0@\"\341\227"..., 4096) = 4096
-[pid 3936174] read(6, "\345U\0\0(\332\341\227\345U\0\08\332\341\227\345U\0\0H\332\341\227\345U\0\0p\332\341\227"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\32\0\0\0\4\0\2\0"..., 4096) = 4096
-[pid 3936174] read(6, "\177\6\0\0\1\0\0\0\23\16\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\377\377\377\377"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\32\0\0\0\1\0\0\0\0\0\0\0\275\7\0\0h\0\0\0\1\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] mmap(NULL, 266240, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7fbc53ffb000
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "h\0\0\0\0\0\0\0(\n\0\0aggminitval\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\22\0\0\0\1\0\n\0\377\377\377\377\377\377\377\377\0\0\1cp\0\1\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0g\1\0\0?\f\0\0\0\0\0\0\272\23\0\0\0\0\0\0\10\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\345U\0\0`\342\341\227\345U\0\0x\342\341\227\345U\0\0`\344\341\227\345U\0\0h\350\341\227"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\25\0\0\0\2\0\n\0\377\377\377\377\377\377\377\377\0\0\1s"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] brk(0x55e597e41000)       = 0x55e597e41000
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\345U\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\1\0\0\0p\0\0\0\1\0\0\0\0\0\0\0\32\0\0\0\1\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\341\4\0\0\0\0\0\0 \n\341\227\345U\0\0\1\0\0\0\377\377\377\377\0\1\1\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\v\0\0\0\0\0\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\350\1\0\0"..., 4096) = 4096
-[pid 3936174] read(6, "\246\0\0\0\0\0\1\0B\0\0\0002\n\0\0\0\220\0T\274\177\0\0002\0\0\0\0\0\0\0"..., 4096) = 2692
-[pid 3936174] read(6, "", 4096)         = 0
-[pid 3936174] close(6)                  = 0
-[pid 3936174] openat(AT_FDCWD, "base/1/2601", O_RDWR|O_CLOEXEC) = 6
-[pid 3936174] lseek(6, 0, SEEK_END)     = 8192
-[pid 3936174] openat(AT_FDCWD, "base/1/1259", O_RDWR|O_CLOEXEC) = 7
-[pid 3936174] lseek(7, 0, SEEK_END)     = 114688
-[pid 3936174] lseek(7, 0, SEEK_END)     = 114688
-[pid 3936174] brk(0x55e597e62000)       = 0x55e597e62000
-[pid 3936174] lseek(7, 0, SEEK_END)     = 114688
-[pid 3936174] getpid()                  = 104013
-[pid 3936174] munmap(0x7fbc5405d000, 1048576) = 0
-[pid 3936174] getpid()                  = 104013
-[pid 3936174] kill(65, SIGUSR2)         = 0
-[pid 3936174] futex(0x7fbc60b165d8, FUTEX_WAKE_PRIVATE, 2147483647) = 0
-[pid 3936174] exit_group(0)             = ?
-[pid 3936174] +++ exited with 0 +++
- <detached ...>`
+`strace -f -e trace=all -p $(pgrep postgres | head -n1)`
 
-The read() and close() systemcalls are visible; I'll try to use these for latency measurement.
-
-### Measuring time between read() and close()
-
-Following up I measured the time between the read() and close() syscalls filtering by the Postgres PID, using bpftrace:
-
-```text
-PID: 3957814 Latency between read and close: 13303 ns
-PID: 3957814 Latency between read and close: 1030 ns
-PID: 3957814 Latency between read and close: 51277 ns
-PID: 3957814 Latency between read and close: 8942 ns
-PID: 3957814 Latency between read and close: 2420 ns
-PID: 3957814 Latency between read and close: 1973 ns
-PID: 3957814 Latency between read and close: 5289 ns
-PID: 3878649 Latency between read and close: 23855668 ns
-PID: 3957815 Latency between read and close: 3170 ns
-PID: 3957815 Latency between read and close: 7027 ns
-PID: 3957815 Latency between read and close: 1854 ns
-PID: 3957815 Latency between read and close: 41833 ns
-PID: 3957815 Latency between read and close: 8385 ns
-PID: 3957815 Latency between read and close: 2555 ns
-PID: 3957815 Latency between read and close: 1401 ns
-PID: 3957815 Latency between read and close: 9808 ns
-PID: 3878649 Latency between read and close: 40491687 ns
-PID: 3957922 Latency between read and close: 2582 ns
-PID: 3957922 Latency between read and close: 2538 ns
-PID: 3957922 Latency between read and close: 5667 ns
-PID: 3957922 Latency between read and close: 4096 ns
-PID: 3957922 Latency between read and close: 1602 ns
-PID: 3957922 Latency between read and close: 5535 ns
-PID: 3957923 Latency between read and close: 2161 ns
-PID: 3957923 Latency between read and close: 2658 ns
-PID: 3957923 Latency between read and close: 5308 ns
-PID: 3957923 Latency between read and close: 3578 ns
-PID: 3957923 Latency between read and close: 1103 ns
-PID: 3957923 Latency between read and close: 5469 ns
-PID: 3878649 Latency between read and close: 1418293300 ns
-PID: 3878649 Latency between read and close: 17154 ns
-PID: 3958083 Latency between read and close: 3588 ns
-PID: 3958083 Latency between read and close: 8587 ns
-PID: 3958083 Latency between read and close: 1184 ns
-PID: 3958083 Latency between read and close: 32214 ns
-PID: 3958083 Latency between read and close: 8564 ns
-PID: 3958083 Latency between read and close: 2539 ns
-PID: 3958083 Latency between read and close: 2350 ns
-PID: 3958083 Latency between read and close: 5734 ns
-PID: 3878649 Latency between read and close: 24256531 ns
-PID: 3958084 Latency between read and close: 2800 ns
-PID: 3958084 Latency between read and close: 6885 ns
-PID: 3958084 Latency between read and close: 1368 ns
-PID: 3958084 Latency between read and close: 37764 ns
-PID: 3958084 Latency between read and close: 7819 ns
-PID: 3958084 Latency between read and close: 2346 ns
-PID: 3958084 Latency between read and close: 1252 ns
-PID: 3958084 Latency between read and close: 5052 ns
-```
-
-Latency outliers can be noticed, so I decided to print the time measurements as a histogram, using BPFtrace as well:
-
-```text
-@latency:
-[0]                    1 |@@                                                  |
-[1]                   11 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@                      |
-[2, 4)                16 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@         |
-[4, 8)                19 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[8, 16)                3 |@@@@@@@@                                            |
-[16, 32)               2 |@@@@@                                               |
-[32, 64)               2 |@@@@@                                               |
-[64, 128)              0 |                                                    |
-[128, 256)             0 |                                                    |
-[256, 512)             0 |                                                    |
-[512, 1K)              0 |                                                    |
-[1K, 2K)               0 |                                                    |
-[2K, 4K)               0 |                                                    |
-[4K, 8K)               0 |                                                    |
-[8K, 16K)              0 |                                                    |
-[16K, 32K)             2 |@@@@@                                               |
-[32K, 64K)             0 |                                                    |
-[64K, 128K)            0 |                                                    |
-[128K, 256K)           0 |                                                    |
-[256K, 512K)           1 |@@                                                  |
-[512K, 1M)             0 |                                                    |
-[1M, 2M)               0 |                                                    |
-[2M, 4M)               0 |                                                    |
-[4M, 8M)               1 |@@                                                  |
-```
-
-In the latency histogram, the "outliers" can be seen (these are the slow select queries that I fired using pgbench), the other read() statements in the 1-64us range are others that postgres does in the process.
+The preadv() systemcalls are visible; I'll try to use these for IO read latency measurement.
 
 ### Instrumenting USDT's to measure query latency
 
@@ -257,101 +97,150 @@ pid   :Phase      :time to phase :time in phase : query
 
 I executed the same select statement 20 times using pgbench, which can be seen here. Latency is about 200ms on average.
 
-Important: when using the local-volume-provisioner, there are no block devices created. Instead, directory-based volumes are used -> we have to trace systemcalls like read() or write() instead of using block tracepoints.
+Important: when using the local-volume-provisioner, there are no block devices created. Instead, directory-based volumes are used -> we have to trace systemcalls like read() or write() instead of using block tracepoints. --> wrong, there was just no IO because the DB was too small
 
-We can observe a bi-modal distribution when looking at time from read() to close():
+#### Measuring time from enter_preadv to exit_preadv:
 
-```
-@latency:
-[0]                    6 |                                                    |
-[1]                  589 |@@@@@@@@@@@@@@@@@@@@@@@                             |
-[2, 4)              1300 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[4, 8)              1291 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ |
-[8, 16)               50 |@@                                                  |
-[16, 32)              12 |                                                    |
-[32, 64)              25 |@                                                   |
-[64, 128)              0 |                                                    |
-[128, 256)             0 |                                                    |
-[256, 512)             0 |                                                    |
-[512, 1K)              0 |                                                    |
-[1K, 2K)               0 |                                                    |
-[2K, 4K)               1 |                                                    |
-[4K, 8K)               1 |                                                    |
-[8K, 16K)              1 |                                                    |
-[16K, 32K)            15 |                                                    |
-[32K, 64K)             4 |                                                    |
-[64K, 128K)           10 |                                                    |
-[128K, 256K)         481 |@@@@@@@@@@@@@@@@@@@                                 |
-[256K, 512K)           9 |                                                    |
+
+
+#### Analysis
+* time from clone() to wait4() is not IO latency but just process runtime (one might consider that query latency).
+* time to complete preadv() operations as seen in the strace for the child process that postgres spawns (child process runs the queries) would be IO latency
+
+### How much of the query time is spent on IO? Whats the IO latency?
+
+Running 10 queries and tracing block IO latency per PID:
+
+´´´console
+Attaching 4 probes...
+Monitoring pgbench for I/O latency...
+^CAverage latency: 898204 ns
+
+
+@io_count: 53843
+@pgbench_pid: 1541677
+@timestamps[8388640, 4262560]: 2963643001510604
+@timestamps[8388608, 228280328]: 2963651301372539
+@timestamps[8388608, 233921464]: 2963710553624990
+@timestamps[8388608, 225983536]: 2963712750546513
+@timestamps[8388608, 225983568]: 2963712750569761
+@timestamps[8388608, 227793984]: 2963745635807680
+@timestamps[8388608, 226132544]: 2963760159075657
+@timestamps[8388608, 226135688]: 2963760164017068
+@timestamps[8388640, 3444424]: 2963774559032762
+@total_latency_ns: 48362020827
+
+@usecs:
+[64, 128)            452 |                                                    |
+[128, 256)         12703 |@@@@@@@@@@@@@@@@@@@@@@@@                            |
+[256, 512)          4931 |@@@@@@@@@                                           |
+[512, 1K)          26867 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[1K, 2K)            8169 |@@@@@@@@@@@@@@@                                     |
+[2K, 4K)             651 |@                                                   |
+[4K, 8K)              49 |                                                    |
+[8K, 16K)             11 |                                                    |
+[16K, 32K)             2 |                                                    |
+[32K, 64K)             6 |                                                    |
+[64K, 128K)            1 |                                                    |
+[128K, 256K)           0 |                                                    |
+[256K, 512K)           0 |                                                    |
 [512K, 1M)             0 |                                                    |
 [1M, 2M)               0 |                                                    |
-[2M, 4M)               2 |                                                    |
-[4M, 8M)               0 |                                                    |
-[8M, 16M)              1 |                                                    |
+[2M, 4M)               0 |                                                    |
+[4M, 8M)               1 |                                                    |
+´´´
+
+Per query total (accumulated) IO latency was 4836ms. The queries had run times of avg. 16 seconds (see pgbench output).
+That means per query, 4836ms were spent in IO block operations, whereas the rest of the query runtime was spent elsewhere. This could include waiting and scheduling times (CPU as well), time to receive data from the cache, ...
+
+In general IO latency was around 900ns on average.
+
+```
+$ pgbench -f /var/lib/postgresql/data/test.sql -h localhost -d app -U app -t 10 -c 1
+Password:
+pgbench (17.0 (Debian 17.0-1.pgdg110+1))
+starting vacuum...end.
+transaction type: /var/lib/postgresql/data/test.sql
+scaling factor: 1
+query mode: simple
+number of clients: 1
+number of threads: 1
+maximum number of tries: 1
+number of transactions per client: 10
+number of transactions actually processed: 10/10
+number of failed transactions: 0 (0.000%)
+latency average = 15949.566 ms
+initial connection time = 7.142 ms
+tps = 0.062698 (without initial connection time)
 ```
 
-I ran the query 500 times, 482 of which had a latency of about ~220ms. The other read() statements in the 1-8us range are most probably smaller read operations, that are performed in the course of the query processing.
+ 
+### IOps
 
-Looking at strace for postgres again:
+As a second metric I looked at IOps. To measure them for the postgres processes I counted read and write syscalls:
 
 ```console
-# strace -e trace=all -p 3878649
-strace: Process 3878649 attached
-epoll_wait(10, [{events=EPOLLIN, data={u32=2759647744, u64=94431910617600}}], 4, 51549) = 1
-accept(9, {sa_family=AF_UNIX}, [128 => 2]) = 11
-getpid()                                = 21
-getpid()                                = 21
-rt_sigprocmask(SIG_SETMASK, ~[ILL TRAP ABRT BUS FPE SEGV CONT SYS RTMIN RT_1], [URG], 8) = 0
-clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, child_tidptr=0x7f2d3c33bd10) = 32709
-rt_sigprocmask(SIG_SETMASK, [URG], NULL, 8) = 0
-close(11)                               = 0
-epoll_wait(10, 0x55e2a47ce218, 4, 60000) = -1 EINTR (Interrupted system call)
---- SIGCHLD {si_signo=SIGCHLD, si_code=CLD_EXITED, si_pid=32709, si_uid=26, si_status=0, si_utime=0, si_stime=0} ---
-getpid()                                = 21
-kill(21, SIGURG)                        = 0
-rt_sigreturn({mask=[URG]})              = -1 EINTR (Interrupted system call)
-wait4(-1, [{WIFEXITED(s) && WEXITSTATUS(s) == 0}], WNOHANG, NULL) = 32709
-wait4(-1, 0x7ffec8e7971c, WNOHANG, NULL) = 0
-epoll_wait(10, [{events=EPOLLIN, data={u32=2759647672, u64=94431910617528}}], 4, 60000) = 1
-read(3, "\27\0\0\0\0\0\0\0\0\0\0\0\25\0\0\0\32\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"..., 1024) = 128
-epoll_wait(10, [{events=EPOLLIN, data={u32=2759647744, u64=94431910617600}}], 4, 60000) = 1
-accept(9, {sa_family=AF_UNIX}, [128 => 2]) = 11
-getpid()                                = 21
-getpid()                                = 21
-rt_sigprocmask(SIG_SETMASK, ~[ILL TRAP ABRT BUS FPE SEGV CONT SYS RTMIN RT_1], [URG], 8) = 0
-clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID|SIGCHLD, child_tidptr=0x7f2d3c33bd10) = 32710
-rt_sigprocmask(SIG_SETMASK, [URG], NULL, 8) = 0
-close(11)                               = 0
-epoll_wait(10, 0x55e2a47ce218, 4, 60000) = -1 EINTR (Interrupted system call)
+Parent 'postgres' IOPS: 274
+Parent 'postgres' IOPS: 221
+Parent 'postgres' IOPS: 275
+Parent 'postgres' IOPS: 220
+Parent 'postgres' IOPS: 275
+Parent 'postgres' IOPS: 220
+Parent 'postgres' IOPS: 347
+Parent 'postgres' IOPS: 262
+Parent 'postgres' IOPS: 219
+Parent 'postgres' IOPS: 275
+Parent 'postgres' IOPS: 220
+Parent 'postgres' IOPS: 331
+Parent 'postgres' IOPS: 220
+Parent 'postgres' IOPS: 220
+Parent 'postgres' IOPS: 275
+Parent 'postgres' IOPS: 220
+Parent 'postgres' IOPS: 389
+Parent 'postgres' IOPS: 220
+Parent 'postgres' IOPS: 275
+Parent 'postgres' IOPS: 219
+Parent 'postgres' IOPS: 220
+Parent 'postgres' IOPS: 275
+Parent 'postgres' IOPS: 222
 ```
 
-It seems like I had the wrong PID for the running postgres process the first time. Here we can observe that a new child process is spawned upon each select statement (new connection is made) -> clone()
-
-Afterwards, there is a wait4() syscall that waits for the child process to exit. We can measure the time between these two syscalls to get the query latency (this does not contain network latency).
-However this measurement contains e.g. scheduler latency as well, and e.g. if the child process has to wait, this wait time would be included in my measurement, too.
-
-Measuring the time between clone() and wait4(): [script link](../scripts/clone_wait4.bt)
-
+Measuring time it takes to complete preadv() operations (strace of the postgres process running the queries yielded, that this syscall was used):
 ```console
-# ./clone_wait4.bt
-Attaching 3 probes...
-Cloned process PID is 33611
-Time for PID 33611 is 4590 us
-Cloned process PID is 33612
-Time for PID 33612 is 4075 us
-Cloned process PID is 33614
-Time for PID 33614 is 6023 us
-Cloned process PID is 33615
-Cloned process PID is 33616
-Time for PID 33615 is 11690 us
-Cloned process PID is 33617
-Time for PID 33616 is 288260 us
-Cloned process PID is 33618
-Time for PID 33617 is 236352 us
-Cloned process PID is 33619
-Time for PID 33618 is 235468 us
-Cloned process PID is 33620
-Time for PID 33619 is 229311 us
+@hist:
+[1]                   27 |                                                    |
+[2, 4)               421 |                                                    |
+[4, 8)               684 |                                                    |
+[8, 16)            87581 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@               |
+[16, 32)          120006 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[32, 64)            6083 |@@                                                  |
+[64, 128)          19000 |@@@@@@@@                                            |
+[128, 256)         13893 |@@@@@@                                              |
+[256, 512)          2537 |@                                                   |
+[512, 1K)            639 |                                                    |
+[1K, 2K)             559 |                                                    |
+[2K, 4K)              66 |                                                    |
+[4K, 8K)              14 |                                                    |
+[8K, 16K)             10 |                                                    |
 ```
 
-As I ran 20 queries, PID 33616 is the first select statement being executed (response time ~288ms).
+No clear Bi-Modal distribution, supposedly 1-32us is reading data from cache and 64-512us are slower operations reading data from the disk.
+# Done:
+* measured block io latency for local-path provider using postgres queries.
+* found out how much of the query time is spent on IO.
+* measured postgres query latency using bpftrace on usdt probes.
+* measured iops when running the postgres queries.
+
+# TODO:
+* measuring time in preadv would actually make sense I think
+* measure io lat for longhorn
+* measure iops for longhorn
+* measure query time for longhorn
+* measure how much of the query time is spent on IO there.
+* analyze differences. why are io lat or iops lower in longhorn?
+* switch off cache and analyze changes in io latency?
+
+# Errors:
+* measuring time between read and close does not make sense; these are unrelated
+* measuring the time between clone and wait4 measures the process runtime, not any other latency (process runtime includes e.g. io latency of course).
+* when the db is too small, all the lines can be cached and read from cache -> when looking at IOpa using iostat, none are recorded.

@@ -1,0 +1,272 @@
+ideweiiss8507:/usr/share/bcc/tools # bpftrace count_iops.bt 898946
+Attaching 4 probes...
+Parent 'postgres' IOPS: 2561
+Parent 'postgres' IOPS: 2505
+Parent 'postgres' IOPS: 2516
+Parent 'postgres' IOPS: 2057
+Parent 'postgres' IOPS: 2372
+Parent 'postgres' IOPS: 2353
+Parent 'postgres' IOPS: 2184
+Parent 'postgres' IOPS: 177
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 1200
+Parent 'postgres' IOPS: 2428
+Parent 'postgres' IOPS: 2407
+Parent 'postgres' IOPS: 2344
+Parent 'postgres' IOPS: 2713
+Parent 'postgres' IOPS: 2628
+Parent 'postgres' IOPS: 2440
+Parent 'postgres' IOPS: 2501
+Parent 'postgres' IOPS: 2612
+Parent 'postgres' IOPS: 2399
+Parent 'postgres' IOPS: 1749
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 1656
+Parent 'postgres' IOPS: 2574
+Parent 'postgres' IOPS: 2421
+Parent 'postgres' IOPS: 2389
+Parent 'postgres' IOPS: 2302
+Parent 'postgres' IOPS: 2476
+Parent 'postgres' IOPS: 2655
+Parent 'postgres' IOPS: 2506
+Parent 'postgres' IOPS: 2393
+Parent 'postgres' IOPS: 2300
+Parent 'postgres' IOPS: 1747
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 656
+Parent 'postgres' IOPS: 2436
+Parent 'postgres' IOPS: 2385
+Parent 'postgres' IOPS: 2571
+Parent 'postgres' IOPS: 2561
+Parent 'postgres' IOPS: 2740
+Parent 'postgres' IOPS: 2782
+Parent 'postgres' IOPS: 2300
+Parent 'postgres' IOPS: 2567
+Parent 'postgres' IOPS: 2421
+Parent 'postgres' IOPS: 1998
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 1900
+Parent 'postgres' IOPS: 2454
+Parent 'postgres' IOPS: 2450
+Parent 'postgres' IOPS: 2453
+Parent 'postgres' IOPS: 2621
+Parent 'postgres' IOPS: 2574
+Parent 'postgres' IOPS: 2517
+Parent 'postgres' IOPS: 2400
+Parent 'postgres' IOPS: 2669
+Parent 'postgres' IOPS: 2384
+Parent 'postgres' IOPS: 993
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 566
+Parent 'postgres' IOPS: 2425
+Parent 'postgres' IOPS: 2703
+Parent 'postgres' IOPS: 2339
+Parent 'postgres' IOPS: 2550
+Parent 'postgres' IOPS: 2417
+Parent 'postgres' IOPS: 2562
+Parent 'postgres' IOPS: 2441
+Parent 'postgres' IOPS: 2426
+Parent 'postgres' IOPS: 2424
+Parent 'postgres' IOPS: 2273
+Parent 'postgres' IOPS: 287
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 1337
+Parent 'postgres' IOPS: 2349
+Parent 'postgres' IOPS: 2455
+Parent 'postgres' IOPS: 2422
+Parent 'postgres' IOPS: 2667
+Parent 'postgres' IOPS: 2703
+Parent 'postgres' IOPS: 2604
+Parent 'postgres' IOPS: 2297
+Parent 'postgres' IOPS: 2719
+Parent 'postgres' IOPS: 2320
+Parent 'postgres' IOPS: 1538
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 1771
+Parent 'postgres' IOPS: 2412
+Parent 'postgres' IOPS: 2392
+Parent 'postgres' IOPS: 2521
+Parent 'postgres' IOPS: 2660
+Parent 'postgres' IOPS: 2762
+Parent 'postgres' IOPS: 2519
+Parent 'postgres' IOPS: 2370
+Parent 'postgres' IOPS: 2735
+Parent 'postgres' IOPS: 2489
+Parent 'postgres' IOPS: 778
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 1607
+Parent 'postgres' IOPS: 2571
+Parent 'postgres' IOPS: 2598
+Parent 'postgres' IOPS: 2445
+Parent 'postgres' IOPS: 2475
+Parent 'postgres' IOPS: 2481
+Parent 'postgres' IOPS: 2599
+Parent 'postgres' IOPS: 2495
+Parent 'postgres' IOPS: 2356
+Parent 'postgres' IOPS: 2398
+Parent 'postgres' IOPS: 1382
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 2090
+Parent 'postgres' IOPS: 2388
+Parent 'postgres' IOPS: 2198
+Parent 'postgres' IOPS: 2567
+Parent 'postgres' IOPS: 2717
+Parent 'postgres' IOPS: 2685
+Parent 'postgres' IOPS: 2422
+Parent 'postgres' IOPS: 2057
+Parent 'postgres' IOPS: 2340
+Parent 'postgres' IOPS: 2324
+Parent 'postgres' IOPS: 1617
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
+
+pgbench -d app -U app -h localhost -f /var/lib/postgresql/data/test.sql -t 10 -c 1
+Password:
+pgbench (17.0 (Debian 17.0-1.pgdg110+1))
+starting vacuum...end.
+transaction type: /var/lib/postgresql/data/test.sql
+scaling factor: 1
+query mode: simple
+number of clients: 1
+number of threads: 1
+maximum number of tries: 1
+number of transactions per client: 10
+number of transactions actually processed: 10/10
+number of failed transactions: 0 (0.000%)
+latency average = 16915.285 ms
+initial connection time = 8.453 ms
+tps = 0.059118 (without initial connection time)
+
+---
+
+# bpftrace usdt_test.bt
+Attaching 4 probes...
+PostgreSQL statement execution analyzer.
+Time in microseconds (us).
+pid   :Phase      :time to phase :time in phase : query
+------|-----------|--------------|--------------|------
+[931805]Query start:              :              : -- ping
+[931805]Query done : (       129) :           129: -- ping
+[931854]Query start:              :              : vacuum pgbench_branches
+[931854]Query done : (      4982) :          4982: vacuum pgbench_branches
+[931854]Query start:              :              : vacuum pgbench_tellers
+[931854]Query done : (      5869) :          5869: vacuum pgbench_tellers
+[931854]Query start:              :              : truncate pgbench_history
+[931854]Query done : (      3349) :          3349: truncate pgbench_history
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[932075]Query start:              :              : -- ping
+[932075]Query done : (        49) :            49: -- ping
+[931855]Query done : (  11660530) :      11660530: SELECT * FROM pgbench_accounts;
+[932331]Query start:              :              : -- ping
+[932331]Query done : (      1125) :          1125: -- ping
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[932577]Query start:              :              : -- ping
+[932577]Query done : (        55) :            55: -- ping
+[931855]Query done : (  12031985) :      12031985: SELECT * FROM pgbench_accounts;
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[932828]Query start:              :              : -- ping
+[932828]Query done : (        87) :            87: -- ping
+[931855]Query done : (  10717194) :      10717194: SELECT * FROM pgbench_accounts;
+[933195]Query start:              :              : -- ping
+[933195]Query done : (      3356) :          3356: -- ping
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[933453]Query start:              :              : -- ping
+[933453]Query done : (        95) :            95: -- ping
+[931855]Query done : (  12014260) :      12014260: SELECT * FROM pgbench_accounts;
+[933711]Query start:              :              : -- ping
+[933711]Query done : (      1130) :          1130: -- ping
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[933962]Query start:              :              : -- ping
+[933962]Query done : (        45) :            45: -- ping
+[931855]Query done : (  11171552) :      11171552: SELECT * FROM pgbench_accounts;
+[934209]Query start:              :              : -- ping
+[934209]Query done : (      2175) :          2175: -- ping
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[934506]Query start:              :              : -- ping
+[934506]Query done : (        46) :            46: -- ping
+[931855]Query done : (  11128599) :      11128599: SELECT * FROM pgbench_accounts;
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[934881]Query start:              :              : -- ping
+[934881]Query done : (        64) :            64: -- ping
+[931855]Query done : (  11342930) :      11342930: SELECT * FROM pgbench_accounts;
+[935135]Query start:              :              : -- ping
+[935135]Query done : (       936) :           936: -- ping
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[935387]Query start:              :              : -- ping
+[935387]Query done : (        44) :            44: -- ping
+[935638]Query start:              :              : -- ping
+[935638]Query done : (       937) :           937: -- ping
+[931855]Query done : (  11531320) :      11531320: SELECT * FROM pgbench_accounts;
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[935905]Query start:              :              : -- ping
+[935905]Query done : (        45) :            45: -- ping
+[931855]Query done : (  10792733) :      10792733: SELECT * FROM pgbench_accounts;
+[936159]Query start:              :              : -- ping
+[936159]Query done : (      1806) :          1806: -- ping
+[931855]Query start:              :              : SELECT * FROM pgbench_accounts;
+[936533]Query start:              :              : -- ping
+[936533]Query done : (      3579) :          3579: -- ping
+[931855]Query done : (  11046552) :      11046552: SELECT * FROM pgbench_accounts;
+[936794]Query start:              :              : -- ping
+[936794]Query done : (       108) :           108: -- ping
+[937079]Query start:              :              : -- ping
+[937079]Query done : (        46) :            46: -- ping
+
+$ pgbench -d app -U app -h localhost -f /var/lib/postgresql/data/test.sql -t 10 -c 1
+Password:
+pgbench (17.0 (Debian 17.0-1.pgdg110+1))
+starting vacuum...end.
+transaction type: /var/lib/postgresql/data/test.sql
+scaling factor: 1
+query mode: simple
+number of clients: 1
+number of threads: 1
+maximum number of tries: 1
+number of transactions per client: 10
+number of transactions actually processed: 10/10
+number of failed transactions: 0 (0.000%)
+latency average = 17624.574 ms
+initial connection time = 7.131 ms
+tps = 0.056739 (without initial connection time)
