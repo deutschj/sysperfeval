@@ -18,8 +18,8 @@ sns.histplot(val2, kde=True,
              line_kws={'linewidth':'2'})
 
 # Add labels
-plt.title('Histogram of Query Latency')
+plt.title('Histogram of IOps distribution')
 plt.ylabel('Count')
-plt.xlabel('Latency (us)')
+plt.xlabel('IOps')
 
 plt.savefig('iops_unequal0.png')

@@ -102,7 +102,6 @@ Important: when using the local-volume-provisioner, there are no block devices c
 #### Measuring time from enter_preadv to exit_preadv:
 
 
-
 #### Analysis
 * time from clone() to wait4() is not IO latency but just process runtime (one might consider that query latency).
 * time to complete preadv() operations as seen in the strace for the child process that postgres spawns (child process runs the queries) would be IO latency
@@ -150,8 +149,12 @@ Monitoring pgbench for I/O latency...
 [4M, 8M)               1 |                                                    |
 ´´´
 
+TODO ad  histogram
+
 Per query total (accumulated) IO latency was 4836ms. The queries had run times of avg. 16 seconds (see pgbench output).
 That means per query, 4836ms were spent in IO block operations, whereas the rest of the query runtime was spent elsewhere. This could include waiting and scheduling times (CPU as well), time to receive data from the cache, ...
+
+This might mean that the application is not IO-bound. I took a look into htop and saw that while the select statements are executed, postgres constantly shows a CPU usage of >95% -> the application is probably CPU-bound instead.
 
 In general IO latency was around 900ns on average.
 
@@ -174,7 +177,64 @@ initial connection time = 7.142 ms
 tps = 0.062698 (without initial connection time)
 ```
 
- 
+Measuring time it takes to complete preadv() operations (strace of the postgres process running the queries yielded, that this syscall was used):
+```console
+@hist:
+[1]                   27 |                                                    |
+[2, 4)               421 |                                                    |
+[4, 8)               684 |                                                    |
+[8, 16)            87581 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@               |
+[16, 32)          120006 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[32, 64)            6083 |@@                                                  |
+[64, 128)          19000 |@@@@@@@@                                            |
+[128, 256)         13893 |@@@@@@                                              |
+[256, 512)          2537 |@                                                   |
+[512, 1K)            639 |                                                    |
+[1K, 2K)             559 |                                                    |
+[2K, 4K)              66 |                                                    |
+[4K, 8K)              14 |                                                    |
+[8K, 16K)             10 |                                                    |
+```
+
+No clear Bi-Modal distribution, supposedly 1-32us is reading data from cache and 64-512us are slower operations reading data from the disk.
+
+Postgres 16: measuring time to complete pread64() syscalls:
+
+```console
+@io_latency[3427879]: 997574
+@io_latency[3425873]: 1013732
+@io_latency[3426775]: 1104702
+@io_latency[3428305]: 1117097
+@io_latency[3426293]: 1136607
+@io_latency[3425221]: 1158294
+@io_latency[3427377]: 1178957
+@io_latency[3424745]: 1195139
+@io_latency[3428845]: 1209701
+@io_latency[3424223]: 1470620
+
+@us:
+[0]                  180 |                                                    |
+[1]              3273009 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[2, 4)            732028 |@@@@@@@@@@@                                         |
+[4, 8)             40709 |                                                    |
+[8, 16)            10482 |                                                    |
+[16, 32)            1380 |                                                    |
+[32, 64)             985 |                                                    |
+[64, 128)          23941 |                                                    |
+[128, 256)         16977 |                                                    |
+[256, 512)          1004 |                                                    |
+[512, 1K)            328 |                                                    |
+[1K, 2K)             120 |                                                    |
+[2K, 4K)              22 |                                                    |
+[4K, 8K)               8 |                                                    |
+[8K, 16K)              4 |                                                    |
+[16K, 32K)             0 |                                                    |
+[32K, 64K)             1 |                                                    |
+```
+
+Per query (process), around 1100ms of the query time are spent in pread64() operations. Whereas around 4800ms are spent in block IO operations -> probably Asynchronous IO is happening. preadv() may not always block for the full duration that disk I/O takes to complete.
+
+
 ### IOps
 
 As a second metric I looked at IOps. To measure them for the postgres processes I counted read and write syscalls:
@@ -205,26 +265,8 @@ Parent 'postgres' IOPS: 275
 Parent 'postgres' IOPS: 222
 ```
 
-Measuring time it takes to complete preadv() operations (strace of the postgres process running the queries yielded, that this syscall was used):
-```console
-@hist:
-[1]                   27 |                                                    |
-[2, 4)               421 |                                                    |
-[4, 8)               684 |                                                    |
-[8, 16)            87581 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@               |
-[16, 32)          120006 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[32, 64)            6083 |@@                                                  |
-[64, 128)          19000 |@@@@@@@@                                            |
-[128, 256)         13893 |@@@@@@                                              |
-[256, 512)          2537 |@                                                   |
-[512, 1K)            639 |                                                    |
-[1K, 2K)             559 |                                                    |
-[2K, 4K)              66 |                                                    |
-[4K, 8K)              14 |                                                    |
-[8K, 16K)             10 |                                                    |
-```
+Plotting data as a histogram: ![Histogram of IOps distribution](results/local-path/iops_unequal0.png)
 
-No clear Bi-Modal distribution, supposedly 1-32us is reading data from cache and 64-512us are slower operations reading data from the disk.
 # Done:
 * measured block io latency for local-path provider using postgres queries.
 * found out how much of the query time is spent on IO.
@@ -232,15 +274,15 @@ No clear Bi-Modal distribution, supposedly 1-32us is reading data from cache and
 * measured iops when running the postgres queries.
 
 # TODO:
-* measuring time in preadv would actually make sense I think
+* measuring time in preadv would actually make sense I think ✅
 * measure io lat for longhorn
 * measure iops for longhorn
 * measure query time for longhorn
 * measure how much of the query time is spent on IO there.
 * analyze differences. why are io lat or iops lower in longhorn?
-* switch off cache and analyze changes in io latency?
+* switch off cache; debug_io_direct and analyze changes in io latency? (1) ✅
 
 # Errors:
 * measuring time between read and close does not make sense; these are unrelated
 * measuring the time between clone and wait4 measures the process runtime, not any other latency (process runtime includes e.g. io latency of course).
-* when the db is too small, all the lines can be cached and read from cache -> when looking at IOpa using iostat, none are recorded.
+* when the db is too small, all the lines can be cached and read from cache -> when looking at IOps using iostat, none are recorded.
