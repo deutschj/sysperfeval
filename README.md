@@ -99,7 +99,7 @@ I executed the same select statement 20 times using pgbench, which can be seen h
 
 Important: when using the local-volume-provisioner, there are no block devices created. Instead, directory-based volumes are used -> we have to trace systemcalls like read() or write() instead of using block tracepoints. --> wrong, there was just no IO because the DB was too small
 
-#### Measuring time from enter_preadv to exit_preadv:
+## PG17, cache enabled
 
 
 #### Analysis
@@ -107,7 +107,7 @@ Important: when using the local-volume-provisioner, there are no block devices c
 * time to complete preadv() operations as seen in the strace for the child process that postgres spawns (child process runs the queries) would be IO latency
 
 ### How much of the query time is spent on IO? Whats the IO latency?
-
+Postgres 17 with cache enabled:
 Running 10 queries and tracing block IO latency per PID:
 
 ´´´console
@@ -148,8 +148,9 @@ Monitoring pgbench for I/O latency...
 [2M, 4M)               0 |                                                    |
 [4M, 8M)               1 |                                                    |
 ´´´
+REDO for postgres 16
 
-TODO ad  histogram
+TODO add histogram
 
 Per query total (accumulated) IO latency was 4836ms. The queries had run times of avg. 16 seconds (see pgbench output).
 That means per query, 4836ms were spent in IO block operations, whereas the rest of the query runtime was spent elsewhere. This could include waiting and scheduling times (CPU as well), time to receive data from the cache, ...
@@ -177,6 +178,7 @@ initial connection time = 7.142 ms
 tps = 0.062698 (without initial connection time)
 ```
 
+Postgres 17 Cache enabled:
 Measuring time it takes to complete preadv() operations (strace of the postgres process running the queries yielded, that this syscall was used):
 ```console
 @hist:
@@ -198,7 +200,44 @@ Measuring time it takes to complete preadv() operations (strace of the postgres 
 
 No clear Bi-Modal distribution, supposedly 1-32us is reading data from cache and 64-512us are slower operations reading data from the disk.
 
-Postgres 16: measuring time to complete pread64() syscalls:
+#### How much time is spent on preadv() operations?
+
+I ran the query 10 times and measured the time that was spent in preadv() oeprations overall (accumulated per query):
+
+```console
+@io_latency[3816425]: 316308
+@io_latency[3817355]: 316955
+@io_latency[3814594]: 360429
+@io_latency[3817830]: 430263
+@io_latency[3815002]: 438407
+@io_latency[3815930]: 442812
+@io_latency[3816797]: 452999
+@io_latency[3815387]: 518351
+@io_latency[3814077]: 538984
+@io_latency[3813414]: 701048
+
+@us:
+[2, 4)                 8 |                                                    |
+[4, 8)               108 |                                                    |
+[8, 16)            55346 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[16, 32)           51286 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    |
+[32, 64)            1849 |@                                                   |
+[64, 128)          13255 |@@@@@@@@@@@@                                        |
+[128, 256)          3962 |@@@                                                 |
+[256, 512)           880 |                                                    |
+[512, 1K)            244 |                                                    |
+[1K, 2K)             116 |                                                    |
+[2K, 4K)               5 |                                                    |
+[4K, 8K)               2 |                                                    |
+```
+
+The time spent in preadv() syscalls ranged from 316ms to 701ms, whereas the time spent in block IO operations amounted to ~4800ms. This meant that there is probably asynchronous IO being used, and that preadv() operations often don't lead to a block for the full duration of a block IO operation (therefore the differing values).
+
+Postgres 17 uses vectored IO (clustering multiple pread64() syscalls into one preadv() syscall which might be harder to debug), so I decided to switch to Postgres 16.
+
+## PG16, no direct IO
+
+Postgres 16 with AIO enabled: measuring time to complete pread64() syscalls:
 
 ```console
 @io_latency[3427879]: 997574
@@ -232,40 +271,164 @@ Postgres 16: measuring time to complete pread64() syscalls:
 [32K, 64K)             1 |                                                    |
 ```
 
-Per query (process), around 1100ms of the query time are spent in pread64() operations. Whereas around 4800ms are spent in block IO operations -> probably Asynchronous IO is happening. preadv() may not always block for the full duration that disk I/O takes to complete.
+In PG16, per query (process), around 1100ms of the query time are spent in pread64() operations. Whereas around 4800ms are spent in block IO operations -> probably Asynchronous IO is happening. preadv() may again not always block for the full duration that disk I/O takes to complete.
 
+For testing purposes I then disabled the use of asynchronous IO, which can be forced by using the debug parameter `debug_direct_io`.
 
-### IOps
+Disabling asynchronous IO made the application IO-bound:
+* query took a lot longer
+* histogram of block IO and pread64() time. How large is the difference?
+
+Reduced the DB size as queries took a lot longer when using direct IO.
+
+## PG16, direct IO
+
+#### Query duration (USDTs):
+
+```console
+[3942982]Query done : (        64) :            64: -- ping
+[3942899]Query done : (   7802983) :       7802983: SELECT * FROM pgbench_accounts;
+[3942899]Query start:              :              : SELECT * FROM pgbench_accounts;
+[3943335]Query start:              :              : -- ping
+[3943335]Query done : (        42) :            42: -- ping
+[3942899]Query done : (   7850340) :       7850340: SELECT * FROM pgbench_accounts;
+[3942899]Query start:              :              : SELECT * FROM pgbench_accounts;
+[3943598]Query start:              :              : -- ping
+[3943598]Query done : (        53) :            53: -- ping
+[3942899]Query done : (   7974342) :       7974342: SELECT * FROM pgbench_accounts;
+[3942899]Query start:              :              : SELECT * FROM pgbench_accounts;
+[3942899]Query done : (   7663468) :       7663468: SELECT * FROM pgbench_accounts;
+[3942899]Query start:              :              : SELECT * FROM pgbench_accounts;
+[3943847]Query start:              :              : -- ping
+[3943847]Query done : (        53) :            53: -- ping
+[3942899]Query done : (   7979018) :       7979018: SELECT * FROM pgbench_accounts;
+[3942899]Query start:              :              : SELECT * FROM pgbench_accounts;
+[3944089]Query start:              :              : -- ping
+[3944089]Query done : (        42) :            42: -- ping
+[3942899]Query done : (   7980232) :       7980232: SELECT * FROM pgbench_accounts;
+[3942899]Query start:              :              : SELECT * FROM pgbench_accounts;
+[3944387]Query start:              :              : -- ping
+[3944387]Query done : (        78) :            78: -- ping
+[3942899]Query done : (   7723262) :       7723262: SELECT * FROM pgbench_accounts;
+[3942899]Query start:              :              : SELECT * FROM pgbench_accounts;
+[3944648]Query start:              :              : -- ping
+[3944648]Query done : (        40) :            40: -- ping
+[3942899]Query done : (   7600260) :       7600260: SELECT * FROM pgbench_accounts;
+[3942899]Query start:              :              : SELECT * FROM pgbench_accounts;
+[3944994]Query start:              :              : -- ping
+[3944994]Query done : (       100) :           100: -- ping
+[3942899]Query done : (   7856708) :       7856708: SELECT * FROM pgbench_accounts;
+[3942899]Query start:              :              : SELECT * FROM pgbench_accounts;
+[3942899]Query done : (   7791054) :       7791054: SELECT * FROM pgbench_accounts;
+[3945259]Query start:              :              : -- ping
+```
+Average query duration was 7822,166 ms.
+
+#### Block IO latency
+Measuring block IO latency, I executed the select statement 10 times here:
+
+```console
+Attaching 4 probes...
+Monitoring pgbench for I/O latency...
+Average latency: 144032 ns
+
+@io_count: 411020
+@pgbench_pid: 3854574
+
+@total_latency_ns: 59200377302
+@usecs:
+[64, 128)          57168 |@@@@@@@@                                            |
+[128, 256)        351301 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[256, 512)          1975 |                                                    |
+[512, 1K)            386 |                                                    |
+[1K, 2K)             152 |                                                    |
+[2K, 4K)              37 |                                                    |
+[4K, 8K)               0 |                                                    |
+[8K, 16K)              0 |                                                    |
+[16K, 32K)             3 |                                                    |
+```
+
+In contrast to PG17, when using PG16 with direct IO, block IO operations accounted for most of the query response time. Block IO operations took mostly around 128-256 ms and overall accounted for 5920 ms on average (= 75% of the 7822 ms query response time).
+
+#### IO time occupied by pread64() syscalls
+
+Accumulating time spent in pread64() syscalls:
+
+```console
+@io_latency[3958941]: 61766041
+
+@us:
+[64, 128)          20004 |@@                                                  |
+[128, 256)        388333 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[256, 512)          2841 |                                                    |
+[512, 1K)            937 |                                                    |
+[1K, 2K)             228 |                                                    |
+[2K, 4K)              57 |                                                    |
+[4K, 8K)               9 |                                                    |
+```
+
+Here ~6176ms were spent in pread64() syscalls, which is slightly more than the time spent in block IO operations. This makes sense, as the time spent in the syscall does not only include the block IO operation, but also IO waiting times, ... TODO
+
+In contrast to when I used PG17 with AIO enabled, (there time in preadv syscalls amounted to way less than the time in block IO operations), when using direct IO, the time spent in pread64() syscalls does match up with the time spent in block IO operations.
+
+## IOps
 
 As a second metric I looked at IOps. To measure them for the postgres processes I counted read and write syscalls:
 
+Postgres 17 with AIO enabled:
 ```console
-Parent 'postgres' IOPS: 274
-Parent 'postgres' IOPS: 221
-Parent 'postgres' IOPS: 275
-Parent 'postgres' IOPS: 220
-Parent 'postgres' IOPS: 275
-Parent 'postgres' IOPS: 220
-Parent 'postgres' IOPS: 347
-Parent 'postgres' IOPS: 262
-Parent 'postgres' IOPS: 219
-Parent 'postgres' IOPS: 275
-Parent 'postgres' IOPS: 220
-Parent 'postgres' IOPS: 331
-Parent 'postgres' IOPS: 220
-Parent 'postgres' IOPS: 220
-Parent 'postgres' IOPS: 275
-Parent 'postgres' IOPS: 220
-Parent 'postgres' IOPS: 389
-Parent 'postgres' IOPS: 220
-Parent 'postgres' IOPS: 275
-Parent 'postgres' IOPS: 219
-Parent 'postgres' IOPS: 220
-Parent 'postgres' IOPS: 275
-Parent 'postgres' IOPS: 222
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 1200
+Parent 'postgres' IOPS: 2428
+Parent 'postgres' IOPS: 2407
+Parent 'postgres' IOPS: 2344
+Parent 'postgres' IOPS: 2713
+Parent 'postgres' IOPS: 2628
+Parent 'postgres' IOPS: 2440
+Parent 'postgres' IOPS: 2501
+Parent 'postgres' IOPS: 2612
+Parent 'postgres' IOPS: 2399
+Parent 'postgres' IOPS: 1749
+Parent 'postgres' IOPS: 0
+Parent 'postgres' IOPS: 0
 ```
 
 Plotting data as a histogram: ![Histogram of IOps distribution](results/local-path/iops_unequal0.png)
+
+## PG17 with direct IO enabled
+
+IOps observed when using direct IO in PG16 are higher, as the AIO in PG17 clusters multiple pread64() syscalls into one preadv() syscall.
+Script output:
+
+```console
+Attaching 4 probes...
+Parent 'postgres' IOPS: 5436
+Parent 'postgres' IOPS: 5375
+Parent 'postgres' IOPS: 5708
+Parent 'postgres' IOPS: 5756
+Parent 'postgres' IOPS: 3491
+Parent 'postgres' IOPS: 5374
+Parent 'postgres' IOPS: 5101
+Parent 'postgres' IOPS: 5081
+Parent 'postgres' IOPS: 5409
+Parent 'postgres' IOPS: 5540
+Parent 'postgres' IOPS: 5421
+Parent 'postgres' IOPS: 5435
+Parent 'postgres' IOPS: 3892
+```
+
+TODO add histogram
+
+The count of pread64() and pwrite64() syscalls matched up with the outputs of `iostat -sx 1` as well:
+```console
+avg-cpu:  %user   %nice %system %iowait  %steal   %idle
+           7.56    0.00    6.30   18.14    0.00   68.01
+
+Device             tps      kB/s    rqm/s   await aqu-sz  areq-sz  %util
+sda            5690.00  45828.00   221.00    0.15   0.84     8.05 100.00
+sdb               0.00      0.00     0.00    0.00   0.00     0.00   0.00
+sdc               2.00      8.00     0.00    0.50   0.00     4.00   0.40
+```
 
 # Done:
 * measured block io latency for local-path provider using postgres queries.
