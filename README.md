@@ -101,7 +101,6 @@ Important: when using the local-volume-provisioner, there are no block devices c
 
 ## PG17, cache enabled
 
-
 #### Analysis
 * time from clone() to wait4() is not IO latency but just process runtime (one might consider that query latency).
 * time to complete preadv() operations as seen in the strace for the child process that postgres spawns (child process runs the queries) would be IO latency
@@ -271,13 +270,13 @@ Postgres 16 with AIO enabled: measuring time to complete pread64() syscalls:
 [32K, 64K)             1 |                                                    |
 ```
 
-In PG16, per query (process), around 1100ms of the query time are spent in pread64() operations. Whereas around 4800ms are spent in block IO operations -> probably Asynchronous IO is happening. preadv() may again not always block for the full duration that disk I/O takes to complete.
+In PG16, per query (process), around 1100ms of the query time are spent in pread64() operations. Whereas around 4800ms are spent in block IO operations -> probably Asynchronous IO is happening. preadv() may again not always block for the full duration that disk I/O takes to complete. TODO add link to other section ?
 
 For testing purposes I then disabled the use of asynchronous IO, which can be forced by using the debug parameter `debug_direct_io`.
 
 Disabling asynchronous IO made the application IO-bound:
 * query took a lot longer
-* histogram of block IO and pread64() time. How large is the difference?
+* in iostat, 100% IO usage and IO wait of around 20% can be observed
 
 Reduced the DB size as queries took a lot longer when using direct IO.
 
@@ -329,11 +328,11 @@ Measuring block IO latency, I executed the select statement 10 times here:
 
 ```console
 Attaching 4 probes...
-Monitoring pgbench for I/O latency...
+Monitoring postgres block I/O latency...
 Average latency: 144032 ns
 
 @io_count: 411020
-@pgbench_pid: 3854574
+@pg_pid: 3854574
 
 @total_latency_ns: 59200377302
 @usecs:
@@ -348,7 +347,7 @@ Average latency: 144032 ns
 [16K, 32K)             3 |                                                    |
 ```
 
-In contrast to PG17, when using PG16 with direct IO, block IO operations accounted for most of the query response time. Block IO operations took mostly around 128-256 ms and overall accounted for 5920 ms on average (= 75% of the 7822 ms query response time).
+In contrast to PG17, when using PG16 with direct IO, block IO operations accounted for most of the query response time. Block IO operations took mostly around 128-256 ms and overall accounted for 5920 ms of time spent in IO on average (= 75% of the 7822 ms query response time).
 
 #### IO time occupied by pread64() syscalls
 
@@ -370,6 +369,8 @@ Accumulating time spent in pread64() syscalls:
 Here ~6176ms were spent in pread64() syscalls, which is slightly more than the time spent in block IO operations. This makes sense, as the time spent in the syscall does not only include the block IO operation, but also IO waiting times, ... TODO
 
 In contrast to when I used PG17 with AIO enabled, (there time in preadv syscalls amounted to way less than the time in block IO operations), when using direct IO, the time spent in pread64() syscalls does match up with the time spent in block IO operations.
+After some more investigation on how the preadv() syscall works, I figured that it can initiate multiple read operations in order to read into multiple buffers. This is often used to achieve asynchronous IO in threaded applications (because the main thread can still perform other operations while IO is running)
+**--> Using preadv, the IO operations may continue running in the background after block IO operations have been initiated (but not finished yet)**
 
 ## IOps
 
@@ -387,17 +388,16 @@ Parent 'postgres' IOPS: 2628
 Parent 'postgres' IOPS: 2440
 Parent 'postgres' IOPS: 2501
 Parent 'postgres' IOPS: 2612
-Parent 'postgres' IOPS: 2399
-Parent 'postgres' IOPS: 1749
+Parent 'postgres' IOPS: 2399Parent 'postgres' IOPS: 1749
 Parent 'postgres' IOPS: 0
 Parent 'postgres' IOPS: 0
 ```
 
-Plotting data as a histogram: ![Histogram of IOps distribution](results/local-path/iops_unequal0.png)
+Plotting data as a histogram: ![Histogram of IOps distribution](results/local-path/iops_pg17_aio.png)
 
-## PG17 with direct IO enabled
+## PG16 with direct IO enabled
 
-IOps observed when using direct IO in PG16 are higher, as the AIO in PG17 clusters multiple pread64() syscalls into one preadv() syscall.
+IOps observed when using direct IO in PG16 are higher, as the AIO in PG17 clusters multiple pread64() syscalls into one preadv() syscall. Also they're higher mostly because I enabled direct IO, which minimizes caching effects.
 Script output:
 
 ```console
@@ -417,7 +417,7 @@ Parent 'postgres' IOPS: 5435
 Parent 'postgres' IOPS: 3892
 ```
 
-TODO add histogram
+![IOps distribution histogram, PG16, 1 client](results/local-path/iops_pg16_dio_1.png)
 
 The count of pread64() and pwrite64() syscalls matched up with the outputs of `iostat -sx 1` as well:
 ```console
@@ -429,6 +429,14 @@ sda            5690.00  45828.00   221.00    0.15   0.84     8.05 100.00
 sdb               0.00      0.00     0.00    0.00   0.00     0.00   0.00
 sdc               2.00      8.00     0.00    0.50   0.00     4.00   0.40
 ```
+
+Although disk usage is 100%, no high IO latency can be observed (avg. between 128 and 256 microseconds). Performance of the query is therefore being limited by IOps, and the block IO operations themselves don't experience any high latencies - as these are sequential reads and the disk can handle them efficiently.
+
+IO latency and IOps seem to stay the same when I increased the database size (by 200%) - so probably query runtime is limited by the disk's capacity of performing read operations, IOps.
+
+When increasing the number of clients in pgbench (to 10), IOps increased because queries were now run by multiple clients in parallel. However IO latency stayed the same:
+
+![IOps distribution histogram, PG16, 10 clients](results/local-path/iops_pg16_dio_10.png)
 
 # Done:
 * measured block io latency for local-path provider using postgres queries.
@@ -444,8 +452,20 @@ sdc               2.00      8.00     0.00    0.50   0.00     4.00   0.40
 * measure how much of the query time is spent on IO there.
 * analyze differences. why are io lat or iops lower in longhorn?
 * switch off cache; debug_io_direct and analyze changes in io latency? (1) ✅
+* would be interesting to look at cache hit rate
+* Reference values? FIO results
 
 # Errors:
 * measuring time between read and close does not make sense; these are unrelated
 * measuring the time between clone and wait4 measures the process runtime, not any other latency (process runtime includes e.g. io latency of course).
 * when the db is too small, all the lines can be cached and read from cache -> when looking at IOps using iostat, none are recorded.
+
+# Methodology:
+* Objective: compare Longhorn and local-path provider on Kubernetes
+* Setup: 6 Node Kubernetes cluster, workloads running always on the same worker node in this test.
+* no other applications receiving any load are running on the Kubernetes cluster
+* Postgres database as a test workload: single-instance, direct IO (no asynchronous IO, easier debugging/tracing possible)
+* Metrics to analyze: IO latency, IOps
+* Analyze differences in values for the metrics observed between the two solutions.
+* => Why are we seeing these differences?
+* Visualize results: histograms for latency, what kind of distributions can we observe?
