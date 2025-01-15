@@ -109,7 +109,7 @@ Important: when using the local-volume-provisioner, there are no block devices c
 Postgres 17 with cache enabled:
 Running 10 queries and tracing block IO latency per PID:
 
-´´´console
+```console
 Attaching 4 probes...
 Monitoring pgbench for I/O latency...
 ^CAverage latency: 898204 ns
@@ -146,7 +146,8 @@ Monitoring pgbench for I/O latency...
 [1M, 2M)               0 |                                                    |
 [2M, 4M)               0 |                                                    |
 [4M, 8M)               1 |                                                    |
-´´´
+```
+
 REDO for postgres 16
 
 TODO add histogram
