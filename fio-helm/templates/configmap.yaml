@@ -31,5 +31,5 @@ data:
     numjobs={{ .Values.sequential.numjobs }}
 
     [wal_write]
-    rw=write              # Sequential write pattern
+    rw=read              # Sequential write pattern
 

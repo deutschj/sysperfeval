@@ -99,7 +99,8 @@ I executed the same select statement 20 times using pgbench, which can be seen h
 
 Important: when using the local-volume-provisioner, there are no block devices created. Instead, directory-based volumes are used -> we have to trace systemcalls like read() or write() instead of using block tracepoints. --> wrong, there was just no IO because the DB was too small
 
-## PG17, cache enabled
+# Local-Path storage provider
+##### using PG17, cache enabled
 
 #### Analysis
 * time from clone() to wait4() is not IO latency but just process runtime (one might consider that query latency).
@@ -235,7 +236,7 @@ The time spent in preadv() syscalls ranged from 316ms to 701ms, whereas the time
 
 Postgres 17 uses vectored IO (clustering multiple pread64() syscalls into one preadv() syscall which might be harder to debug), so I decided to switch to Postgres 16.
 
-## PG16, no direct IO
+## using PG16, with async IO
 
 Postgres 16 with AIO enabled: measuring time to complete pread64() syscalls:
 
@@ -281,7 +282,7 @@ Disabling asynchronous IO made the application IO-bound:
 
 Reduced the DB size as queries took a lot longer when using direct IO.
 
-## PG16, direct IO
+## using PG16, with direct IO
 
 #### Query duration (USDTs):
 
@@ -438,6 +439,49 @@ IO latency and IOps seem to stay the same when I increased the database size (by
 When increasing the number of clients in pgbench (to 10), IOps increased because queries were now run by multiple clients in parallel. However IO latency stayed the same:
 
 ![IOps distribution histogram, PG16, 10 clients](results/local-path/iops_pg16_dio_10.png)
+
+For reference: testing disk IOps and IO latency with fio (running with 1 client) delivers similar results, although IO latency is a bit higher:
+
+```text
+lat (usec): min=291, max=11703, avg=494.78, stdev=199.89
+read: IOPS=2015, BW=15.7MiB/s (16.5MB/s)(945MiB/60001msec)
+```
+
+The higher latency is explained by postgres partially reading data from the OS cache (as I didn't clear the OS cache after every time running the experiment, frequently accessed data will be cached there). Postgres also has its own shared buffer cache, but I set this to the minimum value here (128kB) and didn't encounter any cache hits on the Postgres side. Buffer cache hits would be shown as `Buffers: shared hit=x`.
+
+```sql
+app=> explain (analyze, buffers) select * from pgbench_accounts;
+                                                          QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on pgbench_accounts  (cost=0.00..65984.00 rows=2500000 width=97) (actual time=0.246..6426.156 rows=2500000 loops=1)
+   Buffers: shared read=40984
+```
+
+Latency distribution when running fio:
+
+```console
+Attaching 4 probes...
+^CAverage latency: 512320 ns
+@io_count: 186232
+@pgbench_pid: 293341
+
+@total_latency_ns: 95410547004
+@usecs:
+[64, 128)              1 |                                                    |
+[128, 256)            17 |                                                    |
+[256, 512)        129704 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[512, 1K)          53671 |@@@@@@@@@@@@@@@@@@@@@                               |
+[1K, 2K)            2021 |                                                    |
+[2K, 4K)             508 |                                                    |
+[4K, 8K)             148 |                                                    |
+[8K, 16K)             87 |                                                    |
+[16K, 32K)            27 |                                                    |
+[32K, 64K)            30 |                                                    |
+[64K, 128K)           18 |                                                    |
+```
+
+# Longhorn
+
 
 # Done:
 * measured block io latency for local-path provider using postgres queries.

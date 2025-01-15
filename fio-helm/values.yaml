@@ -1,13 +1,13 @@
-storageClass: longhorn-static
+storageClass: longhorn-2
 pvc:
-  enabled: false
+  enabled: true
   name: iscsi-test
 iscsi: 
   enabled: false
   targetPortal: 10.42.1.176:3260
   iqn: iqn.2019-10.io.longhorn:iscsi-test
 jobname: fio-seq-1
-nodename: ideweiiss8508
+nodename: ideweiiss8507
 random:
   enabled: false
   numjobs: 32

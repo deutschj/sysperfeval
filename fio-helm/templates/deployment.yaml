@@ -81,13 +81,13 @@ spec:
           readOnly: true
         {{- else }}
         persistentVolumeClaim:
-          claimName: {{ .Values.pvc.name }}
+          claimName: "fio-pvc-{{ .Values.jobname }}"
         {{- end }}
       containers:
       - name: fio
         image: artifacts.endress.com/docker-mirror/xridge/fio
         args:
-        - --output-format=json
+        - --output-format=json,normal
         - --output=/datadir/fio-sequential.json
         - /opt/fio/fio-sequential.job
         command: ["fio", "/opt/fio/fio-sequential.job"]
