@@ -390,7 +390,8 @@ Parent 'postgres' IOPS: 2628
 Parent 'postgres' IOPS: 2440
 Parent 'postgres' IOPS: 2501
 Parent 'postgres' IOPS: 2612
-Parent 'postgres' IOPS: 2399Parent 'postgres' IOPS: 1749
+Parent 'postgres' IOPS: 2399
+Parent 'postgres' IOPS: 1749
 Parent 'postgres' IOPS: 0
 Parent 'postgres' IOPS: 0
 ```
@@ -432,7 +433,7 @@ sdb               0.00      0.00     0.00    0.00   0.00     0.00   0.00
 sdc               2.00      8.00     0.00    0.50   0.00     4.00   0.40
 ```
 
-Although disk usage is 100%, no high IO latency can be observed (avg. between 128 and 256 microseconds). Performance of the query is therefore being limited by IOps, and the block IO operations themselves don't experience any high latencies - as these are sequential reads and the disk can handle them efficiently.
+Although disk usage is 100%, no high latency can be observed for block IO operations (avg. between 128 and 256 microseconds). Performance of the query is therefore being limited by IOps, and the block IO operations themselves don't experience any high latencies - as these are sequential reads and the disk can handle them efficiently.
 
 IO latency and IOps seem to stay the same when I increased the database size (by 200%) - so probably query runtime is limited by the disk's capacity of performing read operations, IOps.
 
@@ -440,14 +441,14 @@ When increasing the number of clients in pgbench (to 10), IOps increased because
 
 ![IOps distribution histogram, PG16, 10 clients](results/local-path/iops_pg16_dio_10.png)
 
-For reference: testing disk IOps and IO latency with fio (running with 1 client) delivers similar results, although IO latency is a bit higher:
+For reference: testing disk IOps and IO latency with fio (running with 1 client) delivers similar results, although IO latency is higher:
 
 ```text
 lat (usec): min=291, max=11703, avg=494.78, stdev=199.89
 read: IOPS=2015, BW=15.7MiB/s (16.5MB/s)(945MiB/60001msec)
 ```
 
-The higher latency is explained by postgres partially reading data from the OS cache (as I didn't clear the OS cache after every time running the experiment, frequently accessed data will be cached there). Postgres also has its own shared buffer cache, but I set this to the minimum value here (128kB) and didn't encounter any cache hits on the Postgres side. Buffer cache hits would be shown as `Buffers: shared hit=x`.
+The higher latency is explained by postgres partially reading data from the OS cache (as I didn't clear the OS cache after every time running the experiment, frequently accessed data will be cached there). Postgres also has its own shared buffer cache, but I set this to the minimum value here (128kB) and didn't encounter any cache hits on the Postgres side. Hits on this Postgres buffer would be shown as `Buffers: shared hit=x`.
 
 ```sql
 app=> explain (analyze, buffers) select * from pgbench_accounts;
@@ -480,7 +481,83 @@ Attaching 4 probes...
 [64K, 128K)           18 |                                                    |
 ```
 
+--> Fio had way lower results (2000 vs 5000 IOps, 400+ vs 150ms latency): run postgres again with the cache cleared. Run Fio again multiple times (as Deployment not Job, so that PV is not deleted)
+
 # Longhorn
+
+#### Block IO latency & time spent
+Performing 10 transactions and tracing block IO latency:
+
+```console
+Attaching 4 probes...
+Monitoring postgres for I/O latency...
+^CAverage latency: 482780 ns
+
+@io_count: 412230
+@pgbench_pid: 1800117
+
+@total_latency_ns: 199016700544
+@usecs:
+[256, 512)        286167 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[512, 1K)         121303 |@@@@@@@@@@@@@@@@@@@@@@                              |
+[1K, 2K)            3785 |                                                    |
+[2K, 4K)             810 |                                                    |
+[4K, 8K)             152 |                                                    |
+[8K, 16K)             13 |                                                    |
+```
+
+The average query latency amounted to 22490ms seconds, of which 19901ms were spent in block IO operations. Also the average block IO latency was way higher than when using the local-path provider (avg. 480ms vs 170ms).
+
+```console
+number of transactions actually processed: 10/10
+number of failed transactions: 0 (0.000%)
+latency average = 22490.617 ms
+initial connection time = 29.844 ms
+tps = 0.044463 (without initial connection time)
+
+[436449]Query done : (  23058928) :      23058928: SELECT * FROM pgbench_accounts;
+[436449]Query start:              :              : SELECT * FROM pgbench_accounts;
+[436449]Query done : (  22704079) :      22704079: SELECT * FROM pgbench_accounts;
+[436449]Query start:              :              : SELECT * FROM pgbench_accounts;
+[436449]Query done : (  22340557) :      22340557: SELECT * FROM pgbench_accounts;
+[436449]Query start:              :              : SELECT * FROM pgbench_accounts;
+[436449]Query done : (  23978260) :      23978260: SELECT * FROM pgbench_accounts;
+[436449]Query start:              :              : SELECT * FROM pgbench_accounts;
+[436449]Query done : (  22019559) :      22019559: SELECT * FROM pgbench_accounts;
+[436449]Query start:              :              : SELECT * FROM pgbench_accounts;
+[436449]Query done : (  22162707) :      22162707: SELECT * FROM pgbench_accounts;
+[436449]Query start:              :              : SELECT * FROM pgbench_accounts;
+[436449]Query done : (  22419991) :      22419991: SELECT * FROM pgbench_accounts;
+[436449]Query start:              :              : SELECT * FROM pgbench_accounts;
+[436449]Query done : (  22150983) :      22150983: SELECT * FROM pgbench_accounts;
+[436449]Query start:              :              : SELECT * FROM pgbench_accounts;
+[436449]Query done : (  22042618) :      22042618: SELECT * FROM pgbench_accounts;
+[436449]Query start:              :              : SELECT * FROM pgbench_accounts;
+[436449]Query done : (  21937736) :      21937736: SELECT * FROM pgbench_accounts;
+```
+
+#### Time spent in pread syscalls
+
+Next I looked at the time spent in the pread64() syscall. This amounted to 21839ms, which is again on average slightly more than the time spent in block IO operations itself (due to overhead of the syscalls). Also we can see that most of the query time is actually spent in IO, which makes the application very IO-bound (to expect when using direct IO and no caches).
+
+```console
+@io_latency[398408]: 218398660
+
+@us:
+[256, 512)        212738 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[512, 1K)         192958 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@     |
+[1K, 2K)            5464 |@                                                   |
+[2K, 4K)            1053 |                                                    |
+[4K, 8K)             148 |                                                    |
+[8K, 16K)             23 |                                                    |
+[16K, 32K)            55 |                                                    |
+[32K, 64K)             6 |                                                    |
+```
+
+IOps values were lower as well in comparison to the local-path provisioner, when running with 1 client:
+
+![IOps as a histogram, Longhorn, 1 client](results/longhorn/longhorn_pg16_dio_1.png)
+
 
 
 # Done:
