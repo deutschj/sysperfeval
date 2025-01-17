@@ -448,7 +448,7 @@ lat (usec): min=291, max=11703, avg=494.78, stdev=199.89
 read: IOPS=2015, BW=15.7MiB/s (16.5MB/s)(945MiB/60001msec)
 ```
 
-The higher latency is explained by postgres partially reading data from the OS cache (as I didn't clear the OS cache after every time running the experiment, frequently accessed data will be cached there). Postgres also has its own shared buffer cache, but I set this to the minimum value here (128kB) and didn't encounter any cache hits on the Postgres side. Hits on this Postgres buffer would be shown as `Buffers: shared hit=x`.
+The higher latency is explained by postgres partially reading data from the OS cache (as I didn't clear the OS cache after every time running the experiment, frequently accessed data will be cached there). Postgres also has its own shared buffer cache, but I set this to the minimum value here (128kB) and didn't encounter any cache hits on the Postgres side. Hits on this Postgres buffer would be shown as `Buffers: shared hit=x`. --> probably not OS cache as I used direct IO, but the effect of the Postgres query execution plan 
 
 ```sql
 app=> explain (analyze, buffers) select * from pgbench_accounts;
@@ -559,7 +559,98 @@ IOps values were lower as well in comparison to the local-path provisioner, when
 ![IOps as a histogram, Longhorn, 1 client](results/longhorn/longhorn_pg16_dio_1.png)
 
 
+When tracing time spent in block IO operations for the longhorn process instead (using iotop I identified that there are longhorn processes generating IO alongside as well), I got these results:
 
+```console
+Total time spent in block I/O: 7927860 ns
+Number of block I/O operations: 43435
+
+
+@count: 43435
+@hist:
+[64, 128)            517 |                                                    |
+[128, 256)         38511 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[256, 512)          4065 |@@@@@                                               |
+[512, 1K)            301 |                                                    |
+[1K, 2K)              36 |                                                    |
+[2K, 4K)               3 |                                                    |
+[4K, 8K)               1 |                                                    |
+[8K, 16K)              1 |                                                    |
+```
+
+Here, measured avg. latency was 182,52us, closer to the values achieved using the local-path provider. Overall 3963us were spent in IO per query (23800us query runtime == application-reported IO latency).
+
+Inspecting in which syscalls the longhorn process spends most of its time:
+
+```console
+strace -f -c -p 7751
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 69.73   23.036466         137    167900       195 futex           <--
+ 12.08    3.990538          35    111611           nanosleep
+ 11.31    3.734883          52     71802         1 epoll_pwait
+  2.66    0.877853          42     20789           pread64
+  1.90    0.627041          14     43140           write
+  1.22    0.401941           8     46185     22328 read
+  0.53    0.173685           8     20789           fstat
+  0.48    0.158652         105      1510           pwrite64
+  0.09    0.029541          10      2710           sched_yield
+  0.00    0.001150          28        40           getpid
+  0.00    0.000680          17        40         2 rt_sigreturn
+  0.00    0.000548          13        40           tgkill
+  0.00    0.000305          14        21           newfstatat
+  0.00    0.000227          32         7           close
+  0.00    0.000168          12        14         7 accept4
+  0.00    0.000164           4        35           setsockopt
+  0.00    0.000160          11        14           epoll_ctl
+  0.00    0.000139           4        28           getsockopt
+  0.00    0.000100         100         1           restart_syscall
+  0.00    0.000079          11         7           getsockname
+------ ----------- ----------- --------- --------- ----------------
+100.00   33.034320          67    486683     22533 total
+```
+
+The postgres process running the select statement meanwhile spends time in the pread64 syscall as well, but not in futex:
+
+```console
+strace -f -c -p $(pgrep postgres | tail -n1)
+strace: Process 3059478 attached
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 63.86    0.759382           9     77941           pread64
+ 36.13    0.429642           6     67416           sendto
+  0.00    0.000015          15         1           kill
+  0.00    0.000012           2         6         2 recvfrom
+  0.00    0.000010           3         3           lseek
+  0.00    0.000009           4         2           epoll_wait
+  0.00    0.000000           0         1           munmap
+------ ----------- ----------- --------- --------- ----------------
+100.00    1.189070           8    145370         2 total
+```
+
+Longhorn binary runs on the host under /var/lib/longhorn, not in a container (found this out by checking PIDs of the containers running: `docker ps -q | xargs docker inspect --format '{{.State.Pid}}, {{.Name}}' | grep "<PID>"`)
+
+Looking at the architecure, I found out they're using iSCSI devices underneath. One iSCSI target can be found on the container host:
+
+```console
+iscsiadm -m session -P 3
+iSCSI Transport Class version 2.0-870
+version 2.1.9
+Target: iqn.2019-10.io.longhorn:pvc-3e16c5fa-ee65-4492-9c55-f272d59c9d21 (non-flash)
+```
+
+I then counted iSCSI events via the available tracepoints:
+
+```console
+bpftrace -e 't:iscsi* { @[probe] = count(); }'
+Attaching 7 probes...
+@[tracepoint:iscsi:iscsi_dbg_conn]: 7
+@[tracepoint:iscsi:iscsi_dbg_session]: 277101
+@[tracepoint:iscsi:iscsi_dbg_sw_tcp]: 388392
+@[tracepoint:iscsi:iscsi_dbg_tcp]: 1943883
+```
+
+When running the postgres query, a lot of operations are shown.
 # Done:
 * measured block io latency for local-path provider using postgres queries.
 * found out how much of the query time is spent on IO.
