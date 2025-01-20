@@ -406,7 +406,7 @@ Plotting data as a histogram: ![Histogram of IOps distribution](results/local-pa
 
 ## PG16 with direct IO enabled
 
-IOps observed when using direct IO in PG16 are higher, as the AIO in PG17 clusters multiple pread64() syscalls into one preadv() syscall. Also they're higher mostly because I enabled direct IO, which minimizes caching effects.
+IOps observed when using direct IO in PG16 are higher, as the AIO in PG17 clusters multiple pread64() syscalls into one preadv() syscall, and I counted syscalls here. But besides that, they're higher mostly because I enabled direct IO, which minimizes caching effects => less reading data from caches (RAM) and more reading data from the disk.
 Script output:
 
 ```console
@@ -465,7 +465,7 @@ app=> explain (analyze, buffers) select * from pgbench_accounts;
    Buffers: shared read=40984
 ```
 
-Latency distribution when running fio - REDO, incorrect results:
+Latency distribution when running fio:
 
 
 ```console
