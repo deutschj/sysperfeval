@@ -99,6 +99,8 @@ I executed the same select statement 20 times using pgbench, which can be seen h
 
 Important: when using the local-volume-provisioner, there are no block devices created. Instead, directory-based volumes are used -> we have to trace systemcalls like read() or write() instead of using block tracepoints. --> wrong, there was just no IO because the DB was too small
 
+TODO show this
+
 # Local-Path storage provider
 ##### using PG17, cache enabled
 
@@ -107,6 +109,8 @@ Important: when using the local-volume-provisioner, there are no block devices c
 * time to complete preadv() operations as seen in the strace for the child process that postgres spawns (child process runs the queries) would be IO latency
 
 ### How much of the query time is spent on IO? Whats the IO latency?
+Increased DB size as no IO was present (so that read data was bigger than postgres&os caches).
+
 Postgres 17 with cache enabled:
 Running 10 queries and tracing block IO latency per PID:
 
@@ -236,6 +240,8 @@ The time spent in preadv() syscalls ranged from 316ms to 701ms, whereas the time
 
 Postgres 17 uses vectored IO (clustering multiple pread64() syscalls into one preadv() syscall which might be harder to debug), so I decided to switch to Postgres 16.
 
+-> elaborate on what's the problem with the preadv syscalls
+
 ## using PG16, with async IO
 
 Postgres 16 with AIO enabled: measuring time to complete pread64() syscalls:
@@ -272,7 +278,7 @@ Postgres 16 with AIO enabled: measuring time to complete pread64() syscalls:
 [32K, 64K)             1 |                                                    |
 ```
 
-In PG16, per query (process), around 1100ms of the query time are spent in pread64() operations. Whereas around 4800ms are spent in block IO operations -> probably Asynchronous IO is happening. preadv() may again not always block for the full duration that disk I/O takes to complete. TODO add link to other section ?
+In PG16, per query (process), around 1100ms of the query time are spent in pread64() operations. Whereas around 4800ms are spent in block IO operations -> probably Asynchronous IO is happening. pread64() may again not always block for the full duration that disk I/O takes to complete. Also, the application was not IO-bound here.
 
 For testing purposes I then disabled the use of asynchronous IO, which can be forced by using the debug parameter `debug_direct_io`.
 
@@ -349,7 +355,7 @@ Average latency: 144032 ns
 [16K, 32K)             3 |                                                    |
 ```
 
-In contrast to PG17, when using PG16 with direct IO, block IO operations accounted for most of the query response time. Block IO operations took mostly around 128-256 ms and overall accounted for 5920 ms of time spent in IO on average (= 75% of the 7822 ms query response time).
+In contrast to PG17, when using PG16 with direct IO, block IO operations accounted for most of the query response time. Block IO operations took mostly around 128-256 us and overall accounted for 5920 ms of time spent in IO on average (= 75% of the 7822 ms query response time).
 
 #### IO time occupied by pread64() syscalls
 
@@ -368,7 +374,7 @@ Accumulating time spent in pread64() syscalls:
 [4K, 8K)               9 |                                                    |
 ```
 
-Here ~6176ms were spent in pread64() syscalls, which is slightly more than the time spent in block IO operations. This makes sense, as the time spent in the syscall does not only include the block IO operation, but also IO waiting times, ... TODO
+Here ~6176ms were spent in pread64() syscalls, which is slightly more than the time spent in block IO operations. This makes sense, as the time spent in the syscall does not only include the block IO operation, but also IO waiting times, the overhead of the syscall, ... TODO
 
 In contrast to when I used PG17 with AIO enabled, (there time in preadv syscalls amounted to way less than the time in block IO operations), when using direct IO, the time spent in pread64() syscalls does match up with the time spent in block IO operations.
 After some more investigation on how the preadv() syscall works, I figured that it can initiate multiple read operations in order to read into multiple buffers. This is often used to achieve asynchronous IO in threaded applications (because the main thread can still perform other operations while IO is running)
@@ -459,30 +465,34 @@ app=> explain (analyze, buffers) select * from pgbench_accounts;
    Buffers: shared read=40984
 ```
 
-Latency distribution when running fio:
+Latency distribution when running fio - REDO, incorrect results:
+
 
 ```console
+fio --filename=/datadir/datafile --direct=1 --rw=read --bs=8k --ioengine=libaio --numjobs=1 --size=5G --runtime=60 --time_based --group_reporting
 Attaching 4 probes...
-^CAverage latency: 512320 ns
-@io_count: 186232
-@pgbench_pid: 293341
+Monitoring pgbench for I/O latency...
+Average latency: 150155 ns
 
-@total_latency_ns: 95410547004
+@io_count: 760588
+@pgbench_pid: 1869793
+@timestamps[8388608, 164365904]: 372727426762384
+@total_latency_ns: 114206741876
 @usecs:
-[64, 128)              1 |                                                    |
-[128, 256)            17 |                                                    |
-[256, 512)        129704 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
-[512, 1K)          53671 |@@@@@@@@@@@@@@@@@@@@@                               |
-[1K, 2K)            2021 |                                                    |
-[2K, 4K)             508 |                                                    |
-[4K, 8K)             148 |                                                    |
+[64, 128)         135256 |@@@@@@@@@@@                                         |
+[128, 256)        606170 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[256, 512)          6738 |                                                    |
+[512, 1K)          11833 |@                                                   |
+[1K, 2K)             411 |                                                    |
+[2K, 4K)              79 |                                                    |
+[4K, 8K)              12 |                                                    |
 [8K, 16K)             87 |                                                    |
-[16K, 32K)            27 |                                                    |
-[32K, 64K)            30 |                                                    |
-[64K, 128K)           18 |                                                    |
+[16K, 32K)             2 |                                                    |
 ```
 
---> Fio had way lower results (2000 vs 5000 IOps, 400+ vs 150ms latency): run postgres again with the cache cleared. Run Fio again multiple times (as Deployment not Job, so that PV is not deleted)
+Results matched with the postgres select statement results (fio running with direct=1, rw=read).
+
+<!-- -> Fio had way lower results (2000 vs 5000 IOps, 400+ vs 150ms latency): run postgres again with the cache cleared. Run Fio again multiple times (as Deployment not Job, so that PV is not deleted) -->
 
 # Longhorn
 
@@ -565,6 +575,7 @@ Running fio with a Longhorn-provided volume:
   read: IOPS=1894, BW=14.8MiB/s (15.5MB/s)(888MiB/60001msec)
   lat (usec): min=298, max=26164, avg=526.69, stdev=380.94
 ```
+
 Results corresponded with the block IO latency measurements for the Longhorn provider. The difference noticeable between the Longhorn and Local-Path providers can be seen equally in both the FIO and Postgres Select Query results. In both cases, block IO operations seem to be the actual origin of the IO latency and IOps (performance is not being lost elsewhere in the IO stack). 
 
 Local-Path Postgres: block IO latency 150ms, IOPS 5000
@@ -577,7 +588,6 @@ When tracing time spent in block IO operations for the longhorn-engine process i
 ```console
 Total time spent in block I/O: 7927860 ns
 Number of block I/O operations: 43435
-
 
 @count: 43435
 @hist:
@@ -623,6 +633,18 @@ strace -f -c -p 7751
 100.00   33.034320          67    486683     22533 total
 ```
 
+```console
+longhorn (1108119), 260114 events, 10.6%
+
+   syscall            calls  errors  total       min       avg       max       stddev
+                                     (msec)    (msec)    (msec)    (msec)        (%)
+   --------------- --------  ------ -------- --------- --------- ---------     ------
+   futex              49032     13 28921.636     0.000     0.590  2947.097     15.18%
+   epoll_pwait        20558      0  4522.244     0.001     0.220    21.593      0.99%
+   pread64             9546      0  1793.456     0.103     0.188     4.390      0.62%
+   nanosleep           2737      0   173.588     0.008     0.063     0.522      0.77%
+```
+
 The postgres process running the select statement meanwhile spends time in the pread64 syscall as well, but not in futex:
 
 ```console
@@ -639,6 +661,20 @@ strace: Process 3059478 attached
   0.00    0.000000           0         1           munmap
 ------ ----------- ----------- --------- --------- ----------------
 100.00    1.189070           8    145370         2 total
+```
+
+```console
+postgres (1582976), 186530 events, 100.0%
+
+   syscall            calls  errors  total       min       avg       max       stddev
+                                     (msec)    (msec)    (msec)    (msec)        (%)
+   --------------- --------  ------ -------- --------- --------- ---------     ------
+   pread64            49979      0 21143.546     0.000     0.423    28.399      0.28%
+   sendto             43264      0   508.839     0.005     0.012     0.587      0.19%
+   epoll_wait             1      0   368.532   368.532   368.532   368.532      0.00%
+   recvfrom               3      1     0.016     0.004     0.005     0.007     17.34%
+   kill                   1      0     0.015     0.015     0.015     0.015      0.00%
+   lseek                  3      0     0.011     0.001     0.004     0.008     61.70%
 ```
 
 Longhorn binary runs on the host under /var/lib/longhorn, not in a container (found this out by checking PIDs of the containers running: `docker ps -q | xargs docker inspect --format '{{.State.Pid}}, {{.Name}}' | grep "<PID>"`)
@@ -699,6 +735,9 @@ Average latency: 433798 ns
 [8K, 16K)              5 |                                                    |
 ```
 
+pmlock.bt, pmheld.bt to further analyze futex syscalls (manages lock blocking)
+
+- postgres binary unfortunately did not have debug symbols (prebuilt container) - this would have allowed a deeper dive into e.g. code paths responsible for futex syscalls
 
 - find out how much running Kubernetes slows the IO
 - find out what else, besides replica syncing, slows the io
@@ -717,6 +756,33 @@ TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND            
 1107865 be/4 root        2.51 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
 1108122 be/4 root        4.22 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
 ```
+# Methodology
+
+Objective of the experiment: compare performance of two storage providers on Kubernetes
+
+Setup
+* 6 Node Kubernetes cluster, workloads running always on the same worker node in this test.
+* no other workloads present on the cluster. only k8s core components
+* Test workload: a Postgres database
+* single-instance, direct IO (no asynchronous IO, easier debugging/tracing possible)
+  
+System and Workload parameters:
+* HDDs used
+* PG16 with direct IO 
+* Worker node: SLES 15.6 Linux Kernel 6.4.0
+* 4 CPUs, 8GB RAM
+
+Metrics that I selected:
+* IOps
+* IO latency
+
+#### Analysis & Reasoning
+- experiment, tried to keep the setup as stable as possible. PG16 was easier to debug than PG17, and the same for direct IO.
+- using direct IO is not really practical - in reality you would want to use AIO to utilize the cache and speed up queries.
+- debugging on kubernetes is very hard, as often tools are not included in the container images you use; accessing probes & tracepoints via the PID namespace of a container is not always possible, I noticed
+- there is noise present in this system, e.g. Kubernetes core components doing IO requests, network latency for communication between containers and nodes
+- for me it was very hard to find out what causes the lower IOps and higher IO latency when using longhorn. Using systemwide tools first helped (e.g. biotop)
+- the comparison between those storage providers was not really fair, as Longhorn provides enterprise-level capabilities (HA, replication, backup to S3, a UI, ...) and the local-path provider only provides a container with a mount of a path on the corresponding node that it runs on (no HA, replication)
 
 
 # Done:
@@ -727,19 +793,19 @@ TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND            
 
 # TODO:
 * measuring time in preadv would actually make sense I think ✅
-* measure io lat for longhorn
-* measure iops for longhorn
-* measure query time for longhorn
-* measure how much of the query time is spent on IO there.
-* analyze differences. why are io lat or iops lower in longhorn?
+* measure io lat for longhorn ✅
+* measure iops for longhorn ✅
+* measure query time for longhorn ✅
+* measure how much of the query time is spent on IO there. ✅
+* analyze differences. why are io lat or iops lower in longhorn? ✅
 * switch off cache; debug_io_direct and analyze changes in io latency? (1) ✅
-* would be interesting to look at cache hit rate
-* Reference values? FIO results
+* would be interesting to look at cache hit rate ❌
+* Reference values? FIO results ✅
 
 # Errors:
 * measuring time between read and close does not make sense; these are unrelated
 * measuring the time between clone and wait4 measures the process runtime, not any other latency (process runtime includes e.g. io latency of course).
-* when the db is too small, all the lines can be cached and read from cache -> when looking at IOps using iostat, none are recorded.
+* when the db is too small, all the lines can be cached and read from cache -> when looking at IOps using iostat, none are recorded. ✅
 
 # Methodology:
 * Objective: compare Longhorn and local-path provider on Kubernetes

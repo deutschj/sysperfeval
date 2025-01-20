@@ -81,8 +81,7 @@ spec:
           readOnly: true
         {{- else }}
         persistentVolumeClaim:
-#          claimName: "fio-pvc-{{ .Values.jobname }}"
-          claimName: "fio-test-1-pvc"
+          claimName: "fio-pvc-{{ .Values.jobname }}"
         {{- end }}
       containers:
       - name: fio

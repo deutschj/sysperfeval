@@ -1,6 +1,6 @@
-storageClass: longhorn-2
+storageClass: local-path
 pvc:
-  enabled: false
+  enabled: true
   name: iscsi-test
 iscsi: 
   enabled: false
