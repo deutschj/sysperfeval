@@ -439,7 +439,7 @@ sdb               0.00      0.00     0.00    0.00   0.00     0.00   0.00
 sdc               2.00      8.00     0.00    0.50   0.00     4.00   0.40
 ```
 
-Although disk usage is 100%, no high latency can be observed for block IO operations (avg. between 128 and 256 microseconds). Performance of the query is therefore being limited by IOps, and the block IO operations themselves don't experience any high latencies - as these are sequential reads and the disk can handle them efficiently.
+Although disk usage is 100%, no high latency can be observed for block IO operations (avg. between 128 and 256 microseconds). Performance of the query is therefore being limited by IOps, and the block IO operations themselves don't experience any high latencies - as these are sequential reads and the disk can handle them efficiently => see also results at bottom!
 
 IO latency and IOps seem to stay the same when I increased the database size (by 200%) - so probably query runtime is limited by the disk's capacity of performing read operations, IOps.
 
@@ -583,6 +583,20 @@ Local-Path FIO: block IO latency 150ms, IOPS 6200
 Longhorn Postgres: Block IO latency 480ms, IOPS 1800-1900
 Longhorn FIO: BLock IO latency 530ms, IOPS 1900
 
+iotop output showing the longhorn-engine processes:
+
+```console
+Total DISK READ :      34.45 M/s | Total DISK WRITE :      16.63 K/s
+Actual DISK READ:      34.55 M/s | Actual DISK WRITE:      28.50 K/s
+TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND                                                                                                                                                    1422490 be/4 26         17.18 M/s    0.00 B/s  0.00 % 88.31 % postgres: postgres-test: app app 127.0.0.1(43992) SELECT
+1107416 be/4 root        2.44 M/s  810.78 B/s  0.00 %  0.00 % longhorn --volume-name pvc-1079cd13-d010-4d53-b694-26aad9a9cf52 replica /host/opt/k8s/longhorn~--snapshot-max-count 250 --snapshot-max-size 0 --sync-agent-port-count 7 --listen 0.0.0.0:10010
+1107424 be/4 root        2.37 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+1107578 be/4 root     1130.66 K/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+1107863 be/4 root        4.63 M/s 1621.56 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+1107865 be/4 root        2.51 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+1108122 be/4 root        4.22 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+```
+
 When tracing time spent in block IO operations for the longhorn-engine process instead (using iotop I identified that there are longhorn processes generating IO alongside as well), I got these results:
 
 ```console
@@ -634,6 +648,7 @@ strace -f -c -p 7751
 ```
 
 ```console
+# perf trace -s -p <longhorn-engine PID>
 longhorn (1108119), 260114 events, 10.6%
 
    syscall            calls  errors  total       min       avg       max       stddev
@@ -664,6 +679,7 @@ strace: Process 3059478 attached
 ```
 
 ```console
+perf trace -s -p $(pgrep postgres | tail -n1)
 postgres (1582976), 186530 events, 100.0%
 
    syscall            calls  errors  total       min       avg       max       stddev
@@ -737,25 +753,43 @@ Average latency: 433798 ns
 
 pmlock.bt, pmheld.bt to further analyze futex syscalls (manages lock blocking)
 
+Using pmlock.bt to look at futex lock contention for the longhorn process:
+
+```console
+bpftrace pmlock.bt <longhorn-engine PID>
+@lock_latency_ns[0x1e21e60,
+    runtime.futex.abi0+35
+    runtime.notetsleep_internal+179
+    runtime.notetsleep+41
+    runtime.sysmon+454
+    runtime.mstart1+147
+, longhorn]:
+[8K, 16K)              3 |                                                    |
+[16K, 32K)             3 |                                                    |
+[32K, 64K)            29 |                                                    |
+[64K, 128K)          735 |@                                                   |
+[128K, 256K)       22539 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[256K, 512K)        3012 |@@@@@@                                              |
+[512K, 1M)           243 |                                                    |
+[1M, 2M)              97 |                                                    |
+[2M, 4M)              17 |                                                    |
+[4M, 8M)               2 |                                                    |
+[8M, 16M)              1 |                                                    |
+[16M, 32M)             0 |                                                    |
+[32M, 64M)             0 |                                                    |
+[64M, 128M)            0 |                                                    |
+[128M, 256M)           0 |                                                    |
+[256M, 512M)           1 |                                                    |
+```
+
+Outliers at 1ms and above can be noticed; these should be investigated further.
+
 - postgres binary unfortunately did not have debug symbols (prebuilt container) - this would have allowed a deeper dive into e.g. code paths responsible for futex syscalls
 
 - find out how much running Kubernetes slows the IO
 - find out what else, besides replica syncing, slows the io
 - find out what the longhorn engine processes are even reading
-
-iotop output showing the longhorn-engine processes:
-
-```console
-Total DISK READ :      34.45 M/s | Total DISK WRITE :      16.63 K/s
-Actual DISK READ:      34.55 M/s | Actual DISK WRITE:      28.50 K/s
-TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND                                                                                                                                                    1422490 be/4 26         17.18 M/s    0.00 B/s  0.00 % 88.31 % postgres: postgres-test: app app 127.0.0.1(43992) SELECT
-1107416 be/4 root        2.44 M/s  810.78 B/s  0.00 %  0.00 % longhorn --volume-name pvc-1079cd13-d010-4d53-b694-26aad9a9cf52 replica /host/opt/k8s/longhorn~--snapshot-max-count 250 --snapshot-max-size 0 --sync-agent-port-count 7 --listen 0.0.0.0:10010
-1107424 be/4 root        2.37 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
-1107578 be/4 root     1130.66 K/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
-1107863 be/4 root        4.63 M/s 1621.56 B/s  0.00 %  0.00 % longhorn --volume-name [...]
-1107865 be/4 root        2.51 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
-1108122 be/4 root        4.22 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
-```
+- 
 # Methodology
 
 Objective of the experiment: compare performance of two storage providers on Kubernetes
@@ -783,6 +817,14 @@ Metrics that I selected:
 - there is noise present in this system, e.g. Kubernetes core components doing IO requests, network latency for communication between containers and nodes
 - for me it was very hard to find out what causes the lower IOps and higher IO latency when using longhorn. Using systemwide tools first helped (e.g. biotop)
 - the comparison between those storage providers was not really fair, as Longhorn provides enterprise-level capabilities (HA, replication, backup to S3, a UI, ...) and the local-path provider only provides a container with a mount of a path on the corresponding node that it runs on (no HA, replication)
+
+- in all of the tests, the IO latency was very low (max. 500us) - this is to be traced back to using sequential reads in postgres as well as when I ran fio. These can run way faster than random reads as:
+* HDDs suffer from mechanical delays during random access due to 
+  * Seek Time: Moving the read/write head to the correct track.
+  * Rotational Latency: Waiting for the platter to rotate to the desired sector.
+  * With sequential reads, the disk head stays on the same track and reads adjacent sectors in order, minimizing mechanical overhead.
+* also HDD prefetching / read-ahead algorithms make the sequential operations faster
+* the HDD might have a cache itself
 
 
 # Done:
