@@ -1,6 +1,6 @@
 storageClass: longhorn-2
 pvc:
-  enabled: true
+  enabled: false
   name: iscsi-test
 iscsi: 
   enabled: false

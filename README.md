@@ -441,14 +441,15 @@ When increasing the number of clients in pgbench (to 10), IOps increased because
 
 ![IOps distribution histogram, PG16, 10 clients](results/local-path/iops_pg16_dio_10.png)
 
-For reference: testing disk IOps and IO latency with fio (running with 1 client) delivers similar results, although IO latency is higher:
+For reference: testing disk IOps and IO latency with fio (running with 1 client) delivers similar results:
 
 ```text
-lat (usec): min=291, max=11703, avg=494.78, stdev=199.89
-read: IOPS=2015, BW=15.7MiB/s (16.5MB/s)(945MiB/60001msec)
+lat (usec): min=105, max=91707, avg=158.81, stdev=229.20
+read: IOPS=6276, BW=49.0MiB/s (51.4MB/s)(2942MiB/60001msec)
 ```
-
-The higher latency is explained by postgres partially reading data from the OS cache (as I didn't clear the OS cache after every time running the experiment, frequently accessed data will be cached there). Postgres also has its own shared buffer cache, but I set this to the minimum value here (128kB) and didn't encounter any cache hits on the Postgres side. Hits on this Postgres buffer would be shown as `Buffers: shared hit=x`. --> probably not OS cache as I used direct IO, but the effect of the Postgres query execution plan 
+<!-- 
+The higher latency is explained by postgres partially reading data from the OS cache (as I didn't clear the OS cache after every time running the experiment, frequently accessed data will be cached there). Postgres also has its own shared buffer cache, but I set this to the minimum value here (128kB) and didn't encounter any cache hits on the Postgres side. Hits on this Postgres buffer would be shown as `Buffers: shared hit=x`. => probably not OS cache as I used direct IO, but the effect of the Postgres query execution plan
+-->
 
 ```sql
 app=> explain (analyze, buffers) select * from pgbench_accounts;
@@ -558,8 +559,20 @@ IOps values were lower as well in comparison to the local-path provisioner, when
 
 ![IOps as a histogram, Longhorn, 1 client](results/longhorn/longhorn_pg16_dio_1.png)
 
+Running fio with a Longhorn-provided volume:
 
-When tracing time spent in block IO operations for the longhorn process instead (using iotop I identified that there are longhorn processes generating IO alongside as well), I got these results:
+```console
+  read: IOPS=1894, BW=14.8MiB/s (15.5MB/s)(888MiB/60001msec)
+  lat (usec): min=298, max=26164, avg=526.69, stdev=380.94
+```
+Results corresponded with the block IO latency measurements for the Longhorn provider. The difference noticeable between the Longhorn and Local-Path providers can be seen equally in both the FIO and Postgres Select Query results. In both cases, block IO operations seem to be the actual origin of the IO latency and IOps (performance is not being lost elsewhere in the IO stack). 
+
+Local-Path Postgres: block IO latency 150ms, IOPS 5000
+Local-Path FIO: block IO latency 150ms, IOPS 6200
+Longhorn Postgres: Block IO latency 480ms, IOPS 1800-1900
+Longhorn FIO: BLock IO latency 530ms, IOPS 1900
+
+When tracing time spent in block IO operations for the longhorn-engine process instead (using iotop I identified that there are longhorn processes generating IO alongside as well), I got these results:
 
 ```console
 Total time spent in block I/O: 7927860 ns
@@ -578,7 +591,7 @@ Number of block I/O operations: 43435
 [8K, 16K)              1 |                                                    |
 ```
 
-Here, measured avg. latency was 182,52us, closer to the values achieved using the local-path provider. Overall 3963us were spent in IO per query (23800us query runtime == application-reported IO latency).
+Here, measured avg. latency was 182,52us, closer to the values achieved using the local-path provider. Overall the longhorn-engine spent 3963us in IO per query (23800us query runtime == application-reported IO latency).
 
 Inspecting in which syscalls the longhorn process spends most of its time:
 
@@ -650,7 +663,62 @@ Attaching 7 probes...
 @[tracepoint:iscsi:iscsi_dbg_tcp]: 1943883
 ```
 
-When running the postgres query, a lot of operations are shown.
+I decided to run FIO on the iSCSI device on the host itself, to find out whether there are Longhorn components causing the higher IO latency/lower IOPs or whether it's the iSCSI device itself:
+
+```console
+read: IOPS=3171, BW=24.8MiB/s (25.0MB/s)(1487MiB/60001msec)
+lat (usec): min=139, max=37979, avg=313.77, stdev=260.96
+```
+
+Here one can observe that IOPs and IO latency on the iSCSI device itself are already noticeably lower than what I measured using the local-path provider. However, without the Longhorn layers inbetween we can observe a performance increase by ~1200 IOps and ~200us IO latency. This however includes the performance overhead by using Kubernetes itself as well.
+
+The longhorn-engine IO latency measured earlier (~180us) is a subset of the 300us iSCSI latency.
+
+Futex syscalls are presumably used to wait for synchronization between multiple replicas on different hosts that Longhorn creates (2 by default). When disabling the replication, I noticed an increase in performance:
+
+```console
+read: IOPS=2426, BW=18.0MiB/s (19.9MB/s)(1138MiB/60001msec)
+lat (usec): min=283, max=19624, avg=410.72, stdev=289.58
+```
+
+Disabling replicas also sped up postgres query response time by about 5 seconds (18742ms vs. ~23500ms before disabling). Block IO latency decreased to 430us on average, instead of 480us before:
+
+```console
+Monitoring pgbench for I/O latency...
+Average latency: 433798 ns
+@io_count: 414177
+@pgbench_pid: 1401652
+
+@total_latency_ns: 179669377247
+@usecs:
+[256, 512)        373685 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[512, 1K)          35582 |@@@@                                                |
+[1K, 2K)            3991 |                                                    |
+[2K, 4K)             832 |                                                    |
+[4K, 8K)              82 |                                                    |
+[8K, 16K)              5 |                                                    |
+```
+
+
+- find out how much running Kubernetes slows the IO
+- find out what else, besides replica syncing, slows the io
+- find out what the longhorn engine processes are even reading
+
+iotop output showing the longhorn-engine processes:
+
+```console
+Total DISK READ :      34.45 M/s | Total DISK WRITE :      16.63 K/s
+Actual DISK READ:      34.55 M/s | Actual DISK WRITE:      28.50 K/s
+TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND                                                                                                                                                    1422490 be/4 26         17.18 M/s    0.00 B/s  0.00 % 88.31 % postgres: postgres-test: app app 127.0.0.1(43992) SELECT
+1107416 be/4 root        2.44 M/s  810.78 B/s  0.00 %  0.00 % longhorn --volume-name pvc-1079cd13-d010-4d53-b694-26aad9a9cf52 replica /host/opt/k8s/longhorn~--snapshot-max-count 250 --snapshot-max-size 0 --sync-agent-port-count 7 --listen 0.0.0.0:10010
+1107424 be/4 root        2.37 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+1107578 be/4 root     1130.66 K/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+1107863 be/4 root        4.63 M/s 1621.56 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+1107865 be/4 root        2.51 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+1108122 be/4 root        4.22 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
+```
+
+
 # Done:
 * measured block io latency for local-path provider using postgres queries.
 * found out how much of the query time is spent on IO.
