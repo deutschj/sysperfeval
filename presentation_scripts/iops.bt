@@ -1,0 +1,19 @@
+BEGIN
+{
+    printf("Monitoring postgres I/Ops ...\n");
+    @pg_pid = $1;
+}
+
+tracepoint:block:block_rq_issue
+/@pg_pid && pid == @pg_pid/
+{
+    // printf("tracing block io...\n");
+    @count += 1;
+}
+
+// Print IOPS periodically (every second) for the parent process
+interval:s:1
+{
+    printf("Parent 'postgres' IOPS: %d\n", @count);
+    @count = 0;  // Reset the IOPS counter for the next interval
+}

@@ -1,0 +1,47 @@
+#!/usr/local/bin/bpftrace
+/*
+ * scsilatency - Show SCSI command latency distributions.
+ *
+ * Updated to use driver_tag as the unique identifier.
+ */
+
+BEGIN
+{
+    printf("Tracing SCSI latency. Hit Ctrl-C to end.\n");
+    // SCSI opcodes from scsi/scsi_proto.h; add more mappings if desired:
+    @opcode[0x00] = "TEST_UNIT_READY";
+    @opcode[0x03] = "REQUEST_SENSE";
+    @opcode[0x08] = "READ_6";
+    @opcode[0x0a] = "WRITE_6";
+    @opcode[0x0b] = "SEEK_6";
+    @opcode[0x12] = "INQUIRY";
+    @opcode[0x18] = "ERASE";
+    @opcode[0x28] = "READ_10";
+    @opcode[0x2a] = "WRITE_10";
+    @opcode[0x2b] = "SEEK_10";
+    @opcode[0x35] = "SYNCHRONIZE_CACHE";
+}
+
+tracepoint:scsi:scsi_dispatch_cmd_start
+{
+    // Use driver_tag as the unique identifier for the SCSI command
+    @start[args->driver_tag] = nsecs;
+}
+
+tracepoint:scsi:scsi_dispatch_cmd_done
+/@start[args->driver_tag]/
+{
+    $start_time = @start[args->driver_tag];
+    $latency = (nsecs - $start_time) / 1000; // Convert to microseconds
+    delete(@start[args->driver_tag]);
+
+    // Extract SCSI opcode
+    $opcode = args->opcode;
+    @usecs[$opcode, @opcode[$opcode]] = hist($latency);
+}
+
+END
+{
+    clear(@start); clear(@opcode);
+}
+

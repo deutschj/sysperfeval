@@ -1,0 +1,38 @@
+#!/usr/bin/env bpftrace
+
+BEGIN
+{
+    printf("Monitoring pgbench for I/O latency...\n");
+    // @pgbench_pid = $1;
+    @total_latency_ns = 0;  // Total latency in nanoseconds
+    @io_count = 0;          // Total number of completed I/Os
+}
+
+tracepoint:block:block_rq_issue
+/comm == "postgres"/
+{
+    //@pgbench_pid = pid;
+    @timestamps[args->dev, args->sector] = nsecs;
+}
+
+tracepoint:block:block_rq_complete
+/@timestamps[args->dev, args->sector]/ 
+{
+    $latency_ns = nsecs - @timestamps[args->dev, args->sector];
+    @usecs = hist($latency_ns / 1000);  // Histogram of latencies in microseconds
+    @total_latency_ns += $latency_ns;  // Accumulate latency
+    @io_count += 1;                    // Increment I/O count
+    delete(@timestamps[args->dev, args->sector]);
+}
+
+END
+{
+    if (@io_count > 0) {
+        $avg_latency_ns = @total_latency_ns / @io_count;
+        printf("Average latency: %llu ns\n", $avg_latency_ns);
+    } else {
+        printf("No I/O operations recorded.\n");
+    }
+}
+
+

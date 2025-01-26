@@ -153,9 +153,11 @@ Monitoring pgbench for I/O latency...
 [4M, 8M)               1 |                                                    |
 ```
 
-REDO for postgres 16
+REDO:
+* measure appl latency using usdts
+* measure block io lat using pid_lat.bt
+* PG17 default settings (aio)
 
-TODO add histogram
 
 Per query total (accumulated) IO latency was 4836ms. The queries had run times of avg. 16 seconds (see pgbench output).
 That means per query, 4836ms were spent in IO block operations, whereas the rest of the query runtime was spent elsewhere. This could include waiting and scheduling times (CPU as well), time to receive data from the cache, ...
@@ -245,7 +247,7 @@ Postgres 17 uses vectored IO (clustering multiple pread64() syscalls into one pr
 ## using PG16, with async IO
 
 Postgres 16 with AIO enabled: measuring time to complete pread64() syscalls:
-
+REDO, caching is seen here.
 ```console
 @io_latency[3427879]: 997574
 @io_latency[3425873]: 1013732
@@ -382,6 +384,7 @@ After some more investigation on how the preadv() syscall works, I figured that 
 
 ## IOps
 
+I tried keeping IO size the same (8192B as postgres uses as well), and tested only sequential IO. With FIO as well as when running the Postgres Select queries, only reads were done (minimal amount of writes that couldn't be avoided with e.g. postgres). Also I used Direct IO in Postgres as well as in FIO.
 As a second metric I looked at IOps. To measure them for the postgres processes I counted read and write syscalls:
 
 Postgres 17 with AIO enabled:
@@ -406,7 +409,7 @@ Plotting data as a histogram: ![Histogram of IOps distribution](results/local-pa
 
 ## PG16 with direct IO enabled
 
-IOps observed when using direct IO in PG16 are higher, as the AIO in PG17 clusters multiple pread64() syscalls into one preadv() syscall, and I counted syscalls here. But besides that, they're higher mostly because I enabled direct IO, which minimizes caching effects => less reading data from caches (RAM) and more reading data from the disk.
+IOps observed when using direct IO in PG16 are higher, as the AIO in PG17 clusters multiple pread64() syscalls into one preadv() syscall, and I counted syscalls here. But besides that, they're higher mostly because I enabled direct IO, which minimizes caching effects => less reading data from caches (RAM) and more reading data from the disk. Also its possible that the IO increased in size (clustering multiple pread64 syscalls), which would make it not directly comparable anymore (common problem when looking at IOps only).
 Script output:
 
 ```console
@@ -597,6 +600,26 @@ TID  PRIO  USER     DISK READ  DISK WRITE  SWAPIN     IO>    COMMAND            
 1108122 be/4 root        4.22 M/s    0.00 B/s  0.00 %  0.00 % longhorn --volume-name [...]
 ```
 
+biotop:
+```console
+15:46:24 loadavg: 0.57 0.25 0.22 3/1308 4043145
+
+PID     COMM             D MAJ MIN DISK       I/O  Kbytes  AVGms
+1107414 longhorn         R 8   0   sda      11050 88400.0   0.16
+4042784 postgres         R 8   48  sdd      10987 87896.0   0.40
+4043137 postgres         R 8   48  sdd         32   256.0   0.44
+4043136 postgres         R 8   48  sdd         32   256.0   0.38
+912     jbd2/dm-5-8      R 8   16  sdb          2    68.0   0.28
+3982050 kworker/u8:4     R 8   0   sda         12    48.0   0.39
+910     jbd2/dm-3-8      R 8   16  sdb          2    36.0   0.42
+3982050 kworker/u8:4     R 8   16  sdb          1     4.0   0.41
+```
+
+* Longhorn process acts as a proxy
+* Postgres latency includes sending IO requests to sdd, then Longhorn performs the actual IO on the underlying block device sda
+* sdd is the block device that is exposed to the postgres pod
+* sda is the actual physical (virtual here) volume on the Container host
+
 When tracing time spent in block IO operations for the longhorn-engine process instead (using iotop I identified that there are longhorn processes generating IO alongside as well), I got these results:
 
 ```console
@@ -783,6 +806,71 @@ bpftrace pmlock.bt <longhorn-engine PID>
 ```
 
 Outliers at 1ms and above can be noticed; these should be investigated further.
+
+```console
+# bpftrace scsilatency.bt
+Attaching 4 probes...
+Tracing SCSI latency. Hit Ctrl-C to end.
+
+@usecs[74, ]:
+[32, 64)              24 |@@@@@@@@@@                                          |
+[64, 128)            124 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[128, 256)            14 |@@@@@                                               |
+
+@usecs[42, WRITE_10]:
+[1]                    3 |                                                    |
+[2, 4)                 4 |                                                    |
+[4, 8)                 1 |                                                    |
+[8, 16)                5 |                                                    |
+[16, 32)               7 |                                                    |
+[32, 64)              14 |                                                    |
+[64, 128)             24 |                                                    |
+[128, 256)          6889 |@@@@                                                |
+[256, 512)         73161 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[512, 1K)          60529 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@         |
+[1K, 2K)           31931 |@@@@@@@@@@@@@@@@@@@@@@                              |
+[2K, 4K)            1952 |@                                                   |
+[4K, 8K)              12 |                                                    |
+[8K, 16K)              8 |                                                    |
+[16K, 32K)            12 |                                                    |
+[32K, 64K)             8 |                                                    |
+[64K, 128K)            9 |                                                    |
+
+@usecs[40, READ_10]:
+[0]                    1 |                                                    |
+[1]                    0 |                                                    |
+[2, 4)                 0 |                                                    |
+[4, 8)                 5 |                                                    |
+[8, 16)               25 |                                                    |
+[16, 32)              27 |                                                    |
+[32, 64)              42 |                                                    |
+[64, 128)          74528 |@@@@@@@@@@@@@@                                      |
+[128, 256)        268150 |@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@|
+[256, 512)         71976 |@@@@@@@@@@@@@                                       |
+[512, 1K)          70029 |@@@@@@@@@@@@@                                       |
+[1K, 2K)           21871 |@@@@                                                |
+[2K, 4K)            2854 |                                                    |
+[4K, 8K)             336 |                                                    |
+[8K, 16K)            100 |                                                    |
+[16K, 32K)            42 |                                                    |
+[32K, 64K)            19 |                                                    |
+[64K, 128K)           28 |                                                    |
+[128K, 256K)           0 |                                                    |
+[256K, 512K)           0 |                                                    |
+[512K, 1M)             0 |                                                    |
+[1M, 2M)               0 |                                                    |
+[2M, 4M)               0 |                                                    |
+[4M, 8M)               0 |                                                    |
+[8M, 16M)              0 |                                                    |
+[16M, 32M)             0 |                                                    |
+[32M, 64M)             0 |                                                    |
+[64M, 128M)            0 |                                                    |
+[128M, 256M)           0 |                                                    |
+[256M, 512M)           0 |                                                    |
+[512M, 1G)             0 |                                                    |
+[1G, 2G)               0 |                                                    |
+[2G, 4G)               1 |                                                    |
+```
 
 - postgres binary unfortunately did not have debug symbols (prebuilt container) - this would have allowed a deeper dive into e.g. code paths responsible for futex syscalls
 

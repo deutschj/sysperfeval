@@ -18,6 +18,7 @@ sns.histplot(val2, kde=True,
              bins=249, color = 'darkblue', 
              line_kws={'linewidth':'2'})
 
+print('Mean: ' + str(np.mean(values)))
 # Add labels
 plt.title('Histogram of IOps distribution (PG16, direct IO, 1 client)')
 plt.ylabel('Count')

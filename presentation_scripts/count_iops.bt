@@ -1,0 +1,22 @@
+#!/usr/bin/env bpftrace
+
+BEGIN 
+{
+	@postgres_pid = $1;
+}
+
+tracepoint:syscalls:sys_enter_pread64,
+tracepoint:syscalls:sys_enter_pwrite64,
+// /comm == "postgres"/
+/@postgres_pid && pid == @postgres_pid/
+{
+    @iops += 1;
+}
+
+
+// Print IOPS periodically (every second) for the parent process
+interval:s:1
+{
+    printf("Parent 'postgres' IOPS: %d\n", @iops);
+    @iops = 0;  // Reset the IOPS counter for the next interval
+}
